@@ -10,18 +10,17 @@
 // Elements of the ring Z_q[Z] / (Z^n + 1)
 template <typename T>
 struct UnivariateRingPolynomial {
-    std::size_t n;
+    std::size_t n{};
     std::vector<T> coeffs;
+
+    // Make this default constructable
+    explicit UnivariateRingPolynomial() = default;
 
     explicit UnivariateRingPolynomial(std::size_t n_) : n(n_), coeffs(n) {}
 
     friend std::ostream& operator<<(std::ostream& os, const UnivariateRingPolynomial& obj) {
         bool first = true;
         for (std::size_t i = 0; i < obj.n; ++i) {
-            if (obj.coeffs[i] == 0) {
-                continue;
-            }
-
             if (!first) {
                 os << " + ";
             }
@@ -51,6 +50,21 @@ struct UnivariateRingPolynomial {
         return lhs;
     }
 
+    UnivariateRingPolynomial& operator+=(const T& other) {
+        coeffs[0] += other;
+        return *this;
+    }
+
+    friend UnivariateRingPolynomial operator+(UnivariateRingPolynomial lhs, const T& rhs) {
+        lhs += rhs;
+        return lhs;
+    }
+
+    friend UnivariateRingPolynomial operator+(const T& lhs, UnivariateRingPolynomial rhs) {
+        rhs += lhs;
+        return rhs;
+    }
+
     UnivariateRingPolynomial& operator-=(const UnivariateRingPolynomial& other) {
         assert(n == other.n);
         for (std::size_t i = 0; i < n; ++i) {
@@ -63,6 +77,24 @@ struct UnivariateRingPolynomial {
                                               const UnivariateRingPolynomial& rhs) {
         lhs -= rhs;
         return lhs;
+    }
+
+    UnivariateRingPolynomial& operator-=(const T& other) {
+        coeffs[0] -= other;
+        return *this;
+    }
+
+    friend UnivariateRingPolynomial operator-(UnivariateRingPolynomial lhs, const T& rhs) {
+        lhs -= rhs;
+        return lhs;
+    }
+
+    friend UnivariateRingPolynomial operator-(const T& lhs, UnivariateRingPolynomial rhs) {
+        rhs.coeffs[0] = lhs - rhs.coeffs[0];
+        for (std::size_t i = 1; i < rhs.coeffs.size(); ++i) {
+            rhs.coeffs[i] = -rhs.coeffs[i];
+        }
+        return rhs;
     }
 
     UnivariateRingPolynomial& operator*=(const UnivariateRingPolynomial& other) {
@@ -88,6 +120,23 @@ struct UnivariateRingPolynomial {
         return lhs;
     }
 
+    UnivariateRingPolynomial& operator*=(const T& other) {
+        for (std::size_t i = 0; i < n; ++i) {
+            coeffs[i] *= other;
+        }
+        return *this;
+    }
+
+    friend UnivariateRingPolynomial operator*(UnivariateRingPolynomial lhs, const T& rhs) {
+        lhs *= rhs;
+        return lhs;
+    }
+
+    friend UnivariateRingPolynomial operator*(const T& lhs, UnivariateRingPolynomial rhs) {
+        rhs *= lhs;
+        return rhs;
+    }
+
     friend bool operator==(const UnivariateRingPolynomial& lhs,
                            const UnivariateRingPolynomial& rhs) {
         assert(lhs.n == rhs.n);
@@ -108,8 +157,11 @@ struct UnivariateRingPolynomial {
 // Elements of the ring Z_q[Z, Y] / (Z^n + 1, Y^D + 1)
 template <typename T>
 struct BivariateRingPolynomial {
-    std::size_t n, D;
+    std::size_t n{}, D{};
     std::vector<T> coeffs;
+
+    // Make this default constructable
+    explicit BivariateRingPolynomial() = default;
 
     explicit BivariateRingPolynomial(std::size_t n_, std::size_t D_)
         : n(n_), D(D_), coeffs(n * D) {}
@@ -126,10 +178,6 @@ struct BivariateRingPolynomial {
         bool first = true;
         for (std::size_t i = 0; i < obj.n; ++i) {
             for (std::size_t j = 0; j < obj.D; ++j) {
-                if (obj.Coeff(i, j) == 0) {
-                    continue;
-                }
-
                 if (!first) {
                     os << " + ";
                 }

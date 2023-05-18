@@ -5,3 +5,5 @@ add_library(src STATIC
     modular_arithmetic.hpp
     ring_polynomial.hpp
 )
+
+target_link_libraries(src PRIVATE kissfft)

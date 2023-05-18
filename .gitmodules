@@ -1,3 +1,6 @@
 [submodule "catch2"]
 	path = externals/catch2
 	url = git@github.com:catchorg/Catch2.git
+[submodule "externals/kissfft"]
+	path = externals/kissfft
+	url = git@github.com:mborgerding/kissfft.git
