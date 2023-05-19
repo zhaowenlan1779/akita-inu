@@ -13,7 +13,7 @@ if(POLICY CMP0076)
     cmake_policy(SET CMP0076 NEW)
 endif()
 
-project(RAM-FHE)
+project(akita-inu)
 include(CMakeDependentOption)
 
 option(WARNINGS_AS_ERRORS "Treat warnings as errors" ON)

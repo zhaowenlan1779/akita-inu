@@ -1,11 +1,11 @@
 # Catch2
-set(CATCH_INSTALL_DOCS OFF)
-set(CATCH_INSTALL_EXTRAS OFF)
+option(CATCH_INSTALL_DOCS "" OFF)
+option(CATCH_INSTALL_EXTRAS "" OFF)
 add_subdirectory(catch2)
 
-set(KISSFFT_TEST OFF)
-set(KISSFFT_TOOLS OFF)
+option(KISSFFT_TEST "" OFF)
+option(KISSFFT_TOOLS "" OFF)
 set(KISSFFT_DATATYPE double)
-set(KISSFFT_STATIC ON)
-set(BUILD_SHARED_LIBS OFF)
+option(KISSFFT_STATIC "" ON)
+option(BUILD_SHARED_LIBS "" OFF)
 add_subdirectory(kissfft)
