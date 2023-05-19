@@ -73,9 +73,9 @@ TEST_CASE("ASHE Correctness", "[ASHE]") {
     const auto s = ashe.Gen();
 
     static constexpr std::size_t m = 30;
-    std::array<dInt, m> u;
+    std::array<ASHE::dInt, m> u;
     for (std::size_t i = 0; i < m; ++i) {
-        u[i] = dInt{i * i - 3, d};
+        u[i] = ASHE::dInt{i * i - 3, d};
     }
 
     std::array<ASHE::RElement, m> ct;
@@ -87,13 +87,13 @@ TEST_CASE("ASHE Correctness", "[ASHE]") {
     // i-th term = (i * i + 2)X_i^2 X_{2i} X_{i + 20} X_{i^2 mod m}
     ASHE::RElement result{ashe.n, ashe.D};
     for (std::size_t i = 0; i < N; ++i) {
-        result += ashe.Lift(dInt{i * i + 2, d}) * ct[i] * ct[i] * ct[2 * i] * ct[i + 20] *
+        result += ashe.Lift(ASHE::dInt{i * i + 2, d}) * ct[i] * ct[i] * ct[2 * i] * ct[i + 20] *
                   ct[(i * i) % m];
     }
     const auto decrypted = ashe.Dec(s, result);
-    dInt answer{0, d};
+    ASHE::dInt answer{0, d};
     for (std::size_t i = 0; i < N; ++i) {
-        answer += dInt{i * i + 2, d} * u[i] * u[i] * u[2 * i] * u[i + 20] * u[(i * i) % m];
+        answer += ASHE::dInt{i * i + 2, d} * u[i] * u[i] * u[2 * i] * u[i + 20] * u[(i * i) % m];
     }
     REQUIRE(decrypted == answer);
 }

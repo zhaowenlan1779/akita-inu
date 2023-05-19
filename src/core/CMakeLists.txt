@@ -2,6 +2,8 @@ add_library(src STATIC
     ASHE.cpp
     ASHE.h
     big_int.h
+    interpolation.cpp
+    interpolation.h
     modular_arithmetic.hpp
     ring_polynomial.hpp
 )

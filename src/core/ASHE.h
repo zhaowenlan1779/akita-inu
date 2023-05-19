@@ -8,14 +8,14 @@
 #include "core/modular_arithmetic.hpp"
 #include "core/ring_polynomial.hpp"
 
-struct qIntTag {};
-struct dIntTag {};
-
-using qInt = ModularInt<BigInt, qIntTag>;
-using dInt = ModularInt<BigInt, dIntTag>;
-
 class ASHE {
 public:
+    struct qIntTag {};
+    struct dIntTag {};
+
+    using qInt = ModularInt<BigInt, qIntTag>;
+    using dInt = ModularInt<BigInt, dIntTag>;
+
     using QElement = UnivariateRingPolynomial<qInt>;
     using RElement = BivariateRingPolynomial<qInt>;
 
@@ -29,7 +29,7 @@ public:
     RElement Lift(const dInt& val) const;
 
     // Public parameters
-    std::size_t n, D;
+    std::size_t n{}, D{};
     std::shared_ptr<BigInt> d;
     std::shared_ptr<BigInt> q;
 

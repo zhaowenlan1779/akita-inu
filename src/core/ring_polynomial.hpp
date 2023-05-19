@@ -7,8 +7,9 @@
 #include <iostream>
 #include <vector>
 
-// Elements of the ring Z_q[Z] / (Z^n + 1)
-template <typename T>
+// Elements of the ring Z_q[Z] / (Z^n + 1). If DiscardHighDegree is true, this is then
+// just a polynomial of limited degree.
+template <typename T, bool DiscardHighDegree = false>
 struct UnivariateRingPolynomial {
     std::size_t n{};
     std::vector<T> coeffs;
@@ -106,7 +107,11 @@ struct UnivariateRingPolynomial {
                 if (i + j < n) {
                     new_coeffs[i + j] += coeffs[i] * other.coeffs[j];
                 } else {
-                    new_coeffs[i + j - n] -= coeffs[i] * other.coeffs[j];
+                    if constexpr (DiscardHighDegree) {
+                        assert(!(coeffs[i] * other.coeffs[j]));
+                    } else {
+                        new_coeffs[i + j - n] -= coeffs[i] * other.coeffs[j];
+                    }
                 }
             }
         }
@@ -153,6 +158,9 @@ struct UnivariateRingPolynomial {
         return !(lhs == rhs);
     }
 };
+
+template <typename T>
+using UnivariatePolynomial = UnivariateRingPolynomial<T, true>;
 
 // Elements of the ring Z_q[Z, Y] / (Z^n + 1, Y^D + 1)
 template <typename T>

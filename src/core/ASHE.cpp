@@ -3,7 +3,6 @@
 
 #include <cmath>
 #include <iostream>
-#include <numbers>
 #include <boost/integer/common_factor.hpp>
 #include <kiss_fft.h>
 #include "core/ASHE.h"
@@ -15,10 +14,13 @@ ASHE::ASHE(std::size_t lambda, const std::shared_ptr<BigInt>& d_, std::size_t D_
     const auto logd = boost::multiprecision::msb(*d) + 1;
     const auto t = D * logd + std::log2(N) + logd + 1;
 
-    n = static_cast<std::size_t>(lambda + t);
-    if (n % 2) { // Force n to be even to simplify SampleError
-        ++n;
+    // Raise to next 2's power. This does not make it very much bigger.
+    auto target_n = static_cast<std::size_t>(lambda + t);
+    n = 1;
+    while (target_n >>= 1) {
+        n <<= 1;
     }
+    n <<= 1;
 
     // Select q as smallest integer larger than (2n^(3/2) log n)^t coprime to d
     BigInt tentative_q = boost::multiprecision::pow(
@@ -48,7 +50,7 @@ ASHE::RElement ASHE::Enc(const QElement& key, const dInt& plaintext) const {
     return ct;
 }
 
-dInt ASHE::Dec(const QElement& key, const RElement& ct) const {
+ASHE::dInt ASHE::Dec(const QElement& key, const RElement& ct) const {
     // Evaluate ct on key
     QElement result{n};
 
@@ -87,6 +89,8 @@ ASHE::QElement ASHE::SampleUniform() const {
     return out;
 }
 
+constexpr double PI = 3.141592653589793238462643383279502884L;
+
 bool ASHE::SampleErrorTrial(QElement& out) const {
     // Reference:
     // Chris Peikert, Oded Regev, and Noah Stephens-Davidowitz. Pseudorandomness
@@ -105,7 +109,7 @@ bool ASHE::SampleErrorTrial(QElement& out) const {
     // Since n is even, there are no real embeddings, and n/2 pairs of complex embeddings
     std::vector<double> r(n / 2);
     for (auto& it : r) {
-        boost::random::normal_distribution dist{0.0, 1 / 2 / std::sqrt(std::numbers::pi)};
+        boost::random::normal_distribution dist{0.0, 1 / 2 / std::sqrt(PI)};
 
         const auto x = dist(gen), y = dist(gen);
         // For numerical stability alpha2 is omitted here
@@ -117,7 +121,7 @@ bool ASHE::SampleErrorTrial(QElement& out) const {
     // from the embedding
     std::vector<kiss_fft_cpx> embedding(2 * n);
     for (std::size_t i = 0; i < r.size(); ++i) {
-        boost::random::normal_distribution dist{0.0, r[i] / 2 / std::sqrt(std::numbers::pi)};
+        boost::random::normal_distribution dist{0.0, r[i] / 2 / std::sqrt(PI)};
 
         embedding[2 * i + 1].r = dist(gen);
         embedding[2 * i + 1].i = dist(gen);
@@ -135,7 +139,6 @@ bool ASHE::SampleErrorTrial(QElement& out) const {
         // alpha = 2 / q => q * r * alpha / n = 2 * r / n
         // We multiply this result by n because we are working in R and not R^\vee.
         // Ref: A Toolkit for Ring-LWE Cryptography, Page 6; Ring-LWE in Polynomial Rings, Page 39
-        // Those do not directly apply unless n is a power of 2.
         const auto value = 2 * embedding[i].r;
 
         if (std::abs(std::round(value)) > beta) {
