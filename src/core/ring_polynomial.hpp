@@ -280,3 +280,27 @@ struct BivariateRingPolynomial {
         return !(lhs == rhs);
     }
 };
+
+// Multivariate F_d[X_1, ... X_m], individual degree < d.
+// The dimensions are in order m to 1.
+template <typename T>
+struct MultivariatePolynomial {
+    std::size_t d{}, m{};
+    std::vector<T> coeffs;
+
+    // Make this default constructable
+    explicit MultivariatePolynomial() = default;
+
+    explicit MultivariatePolynomial(std::size_t d_, std::size_t m_) : d(d_), m(m_) {
+        // Exponentiation by squaring
+        std::size_t total_size = 1;
+        while (m_ > 0) {
+            if (m_ & 1) {
+                total_size *= d_;
+            }
+            m_ >>= 1;
+            d_ *= d_;
+        }
+        coeffs.resize(total_size);
+    }
+};

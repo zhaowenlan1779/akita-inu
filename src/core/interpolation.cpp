@@ -4,20 +4,21 @@
 #include <algorithm>
 #include "core/interpolation.h"
 
+namespace Interpolation {
+
 UnivariateInterpolator::UnivariateInterpolator(int64_t d_) : d(d_) {
     Build(1, 0, d - 1);
 }
 
 UnivariateInterpolator::~UnivariateInterpolator() = default;
 
-static std::pair<UnivariateInterpolator::dInt, std::size_t> FindHighestTerm(
-    const UnivariateInterpolator::Poly& poly) {
+static std::pair<dInt, std::size_t> FindHighestTerm(const Poly& poly) {
     const auto it = std::find_if(poly.coeffs.rbegin(), poly.coeffs.rend(),
                                  [](const auto& x) { return static_cast<bool>(x); });
     return {*it, poly.coeffs.rend() - it - 1};
 }
 
-UnivariateInterpolator::Poly UnivariateInterpolator::Remainder(Poly a, Poly b) const {
+Poly UnivariateInterpolator::Remainder(Poly a, Poly b) const {
     const auto& [coeff_b, deg_b] = FindHighestTerm(b);
     while (true) {
         const auto& [coeff_a, deg_a] = FindHighestTerm(a);
@@ -50,9 +51,8 @@ void UnivariateInterpolator::Build(std::size_t k, std::size_t l, std::size_t r) 
     M[k] = M[2 * k] * M[2 * k + 1];
 }
 
-std::vector<UnivariateInterpolator::dInt> UnivariateInterpolator::Evaluate(Poly poly, std::size_t k,
-                                                                           std::size_t l,
-                                                                           std::size_t r) const {
+std::vector<dInt> UnivariateInterpolator::Evaluate(Poly poly, std::size_t k, std::size_t l,
+                                                   std::size_t r) const {
 
     if (l == r) {
         return {std::move(poly.coeffs[0])};
@@ -71,9 +71,8 @@ std::vector<UnivariateInterpolator::dInt> UnivariateInterpolator::Evaluate(Poly 
     return result;
 }
 
-UnivariateInterpolator::Poly UnivariateInterpolator::CombineModuli(std::span<dInt> c, std::size_t k,
-                                                                   std::size_t l,
-                                                                   std::size_t r) const {
+Poly UnivariateInterpolator::CombineModuli(std::span<dInt> c, std::size_t k, std::size_t l,
+                                           std::size_t r) const {
     if (l == r) {
         Poly poly{static_cast<std::size_t>(d + 1)};
         poly.coeffs[0] = std::move(c[0]);
@@ -86,7 +85,7 @@ UnivariateInterpolator::Poly UnivariateInterpolator::CombineModuli(std::span<dIn
     return M[2 * k + 1] * r_0 + M[2 * k] * r_1;
 }
 
-UnivariateInterpolator::Poly UnivariateInterpolator::Interpolate(std::span<dInt> ys) const {
+Poly UnivariateInterpolator::Interpolate(std::span<dInt> ys) const {
     auto m = M[1];
 
     // Take derivative of m
@@ -102,5 +101,47 @@ UnivariateInterpolator::Poly UnivariateInterpolator::Interpolate(std::span<dInt>
     for (std::size_t i = 0; i < s_inv.size(); ++i) {
         c[i] = ys[i] / s_inv[i];
     }
-    return CombineModuli(c, 1, 0, d - 1);
+
+    auto poly = CombineModuli(c, 1, 0, d - 1);
+    --poly.n;
+    poly.coeffs.pop_back();
+    return poly;
 }
+
+MultivariateInterpolator::MultivariateInterpolator(int64_t d_, std::size_t m_)
+    : d(d_), m(m_), uni_interp(d) {}
+
+MultivariateInterpolator::~MultivariateInterpolator() = default;
+
+MultiPoly MultivariateInterpolator::Interpolate(std::span<dInt> ys) const {
+    return InterpolateStep(ys, m);
+}
+
+MultiPoly MultivariateInterpolator::InterpolateStep(std::span<dInt> ys, std::size_t m) const {
+    if (m == 1) {
+        MultiPoly poly{static_cast<std::size_t>(d), 1};
+        poly.coeffs = uni_interp.Interpolate(ys).coeffs;
+        return poly;
+    }
+
+    std::vector<dInt> c(ys.size());
+    for (std::size_t j = 0; j < ys.size() / d; ++j) {
+        auto coeffs = uni_interp.Interpolate(ys.subspan(j * d, d)).coeffs;
+        // Place this in the correct position
+        for (std::size_t i = 0; i < static_cast<std::size_t>(d); ++i) {
+            c[(ys.size() / d) * i + j] = std::move(coeffs[i]);
+        }
+    }
+
+    MultiPoly poly{static_cast<std::size_t>(d), m};
+    for (std::size_t i = 0; i < static_cast<std::size_t>(d); ++i) {
+        auto coeffs =
+            InterpolateStep({c.begin() + (ys.size() / d) * i, ys.size() / d}, m - 1).coeffs;
+
+        // Note: The order of dimensions is reversed in the polynomial.
+        std::move(coeffs.begin(), coeffs.end(), poly.coeffs.begin() + i * ys.size() / d);
+    }
+    return poly;
+}
+
+} // namespace Interpolation

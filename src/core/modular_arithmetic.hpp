@@ -39,7 +39,7 @@ struct ModularInt {
 
     constexpr explicit ModularInt() = default;
 
-    constexpr explicit ModularInt(const T& value_, const ModulusType& modulus_)
+    constexpr ModularInt(const T& value_, const ModulusType& modulus_)
         : modulus(modulus_), value(value_ % Modulus()) {}
 
     constexpr ModularInt(const ModularInt& other) : modulus(other.modulus), value(other.value) {}
@@ -121,6 +121,7 @@ struct ModularInt {
         }
 
         assert(Modulus() == other.Modulus());
+        // TODO: This may get out of range with scalars
         value *= other.value;
         value %= Modulus();
         return *this;
