@@ -4,15 +4,9 @@
 #pragma once
 
 #include <span>
-#include "core/modular_arithmetic.hpp"
-#include "core/ring_polynomial.hpp"
+#include "core/common.h"
 
 namespace Interpolation {
-
-struct dIntTag {};
-using dInt = ModularInt<int64_t, dIntTag, true>;
-
-using Poly = UnivariatePolynomial<dInt>;
 
 // Algorithm from Joachim von zur Gathen and Jurgen Gerhard. Modern computer algebra. Cambridge
 // University Press, Cambridge, England, 3rd edition, 2013. Chapter 10.
@@ -22,7 +16,7 @@ public:
     explicit UnivariateInterpolator(int64_t d);
     ~UnivariateInterpolator();
 
-    Poly Interpolate(std::span<dInt> ys) const;
+    Poly Interpolate(std::span<const dInt> ys) const;
 
 private:
     Poly Remainder(Poly a, Poly b) const;
@@ -38,18 +32,16 @@ private:
     std::vector<Poly> M;
 };
 
-using MultiPoly = MultivariatePolynomial<dInt>;
-
 class MultivariateInterpolator {
 public:
     explicit MultivariateInterpolator(int64_t d, std::size_t m);
     ~MultivariateInterpolator();
 
     // The input is in order 1 to m
-    MultiPoly Interpolate(std::span<dInt> ys) const;
+    MultiPoly Interpolate(std::span<const dInt> ys) const;
 
 private:
-    MultiPoly InterpolateStep(std::span<dInt> ys, std::size_t m) const;
+    MultiPoly InterpolateStep(std::span<const dInt> ys, std::size_t m) const;
 
     int64_t d{};
     std::size_t m{};

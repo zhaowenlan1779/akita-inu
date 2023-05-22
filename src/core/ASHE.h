@@ -5,22 +5,19 @@
 
 #include <boost/random.hpp>
 #include "core/big_int.h"
+#include "core/common.h"
 #include "core/modular_arithmetic.hpp"
 #include "core/ring_polynomial.hpp"
 
 class ASHE {
 public:
     struct qIntTag {};
-    struct dIntTag {};
-
     using qInt = ModularInt<BigInt, qIntTag>;
-    using dInt = ModularInt<BigInt, dIntTag>;
 
     using QElement = UnivariateRingPolynomial<qInt>;
     using RElement = BivariateRingPolynomial<qInt>;
 
-    explicit ASHE(std::size_t lambda, const std::shared_ptr<BigInt>& d, std::size_t D,
-                  std::size_t N);
+    explicit ASHE(std::size_t lambda, int64_t d, std::size_t D, std::size_t N);
     ~ASHE();
 
     QElement Gen() const;
@@ -30,7 +27,7 @@ public:
 
     // Public parameters
     std::size_t n{}, D{};
-    std::shared_ptr<BigInt> d;
+    int64_t d{};
     std::shared_ptr<BigInt> q;
 
 private:

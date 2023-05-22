@@ -85,7 +85,7 @@ Poly UnivariateInterpolator::CombineModuli(std::span<dInt> c, std::size_t k, std
     return M[2 * k + 1] * r_0 + M[2 * k] * r_1;
 }
 
-Poly UnivariateInterpolator::Interpolate(std::span<dInt> ys) const {
+Poly UnivariateInterpolator::Interpolate(std::span<const dInt> ys) const {
     auto m = M[1];
 
     // Take derivative of m
@@ -113,11 +113,11 @@ MultivariateInterpolator::MultivariateInterpolator(int64_t d_, std::size_t m_)
 
 MultivariateInterpolator::~MultivariateInterpolator() = default;
 
-MultiPoly MultivariateInterpolator::Interpolate(std::span<dInt> ys) const {
+MultiPoly MultivariateInterpolator::Interpolate(std::span<const dInt> ys) const {
     return InterpolateStep(ys, m);
 }
 
-MultiPoly MultivariateInterpolator::InterpolateStep(std::span<dInt> ys, std::size_t m) const {
+MultiPoly MultivariateInterpolator::InterpolateStep(std::span<const dInt> ys, std::size_t m) const {
     if (m == 1) {
         MultiPoly poly{static_cast<std::size_t>(d), 1};
         poly.coeffs = uni_interp.Interpolate(ys).coeffs;

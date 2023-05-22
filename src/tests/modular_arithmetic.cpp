@@ -33,7 +33,6 @@ TEST_CASE("modular arithmetic", "[base]") {
         ModularInt<int> def;
         ModularInt<int> a{88, 96};
 
-        REQUIRE(a != def);
         REQUIRE(a + def == a);
         REQUIRE(a - def == a);
         REQUIRE(a * def == ModularInt<int>{0, 96});

@@ -12,6 +12,7 @@
 // Modular arithmetic. Optional tag to ensure type safety.
 template <typename T, typename Tag = void, bool EnableDivision = false>
 struct ModularInt {
+    using ValueType = T;
     using ModulusType = std::conditional_t<std::is_scalar_v<T>, T, std::shared_ptr<T>>;
     ModulusType modulus{};
 
@@ -39,21 +40,26 @@ struct ModularInt {
 
     constexpr explicit ModularInt() = default;
 
-    constexpr ModularInt(const T& value_, const ModulusType& modulus_)
+    constexpr ModularInt(const T& value_, const ModulusType& modulus_) noexcept
         : modulus(modulus_), value(value_ % Modulus()) {}
 
-    constexpr ModularInt(const ModularInt& other) : modulus(other.modulus), value(other.value) {}
+    constexpr ModularInt(const T& value_) noexcept : value(value_) {}
 
-    constexpr ModularInt(ModularInt&& other)
+    constexpr ModularInt(T&& value_) noexcept : value(value_) {}
+
+    constexpr ModularInt(const ModularInt& other) noexcept
+        : modulus(other.modulus), value(other.value) {}
+
+    constexpr ModularInt(ModularInt&& other) noexcept
         : modulus(std::move(other.modulus)), value(std::move(other.value)) {}
 
-    ModularInt& operator=(const ModularInt& other) {
+    ModularInt& operator=(const ModularInt& other) noexcept {
         value = other.value;
         modulus = other.modulus;
         return *this;
     }
 
-    ModularInt& operator=(ModularInt&& other) {
+    ModularInt& operator=(ModularInt&& other) noexcept {
         value = std::move(other.value);
         modulus = std::move(other.modulus);
         return *this;
@@ -69,16 +75,15 @@ struct ModularInt {
     }
 
     constexpr ModularInt& operator+=(const ModularInt& other) {
-        if (!HasModulus()) {
+        if (HasModulus() && other.HasModulus()) {
+            assert(Modulus() == other.Modulus());
+        } else if (!HasModulus()) {
             modulus = other.modulus;
         }
-        if (!other.HasModulus()) {
-            return *this;
-        }
-
-        assert(Modulus() == other.Modulus());
         value += other.value;
-        value %= Modulus();
+        if (HasModulus()) {
+            value %= Modulus();
+        }
         return *this;
     }
 
@@ -88,16 +93,15 @@ struct ModularInt {
     }
 
     constexpr ModularInt& operator-=(const ModularInt& other) {
-        if (!HasModulus()) {
+        if (HasModulus() && other.HasModulus()) {
+            assert(Modulus() == other.Modulus());
+        } else if (!HasModulus()) {
             modulus = other.modulus;
         }
-        if (!other.HasModulus()) {
-            return *this;
-        }
-
-        assert(Modulus() == other.Modulus());
         value -= other.value;
-        value %= Modulus();
+        if (HasModulus()) {
+            value %= Modulus();
+        }
         return *this;
     }
 
@@ -107,23 +111,23 @@ struct ModularInt {
     }
 
     friend ModularInt operator-(const ModularInt& val) {
-        return ModularInt{-val.value, val.modulus};
+        ModularInt new_val{val};
+        new_val.value = -new_val.value;
+        return new_val;
     }
 
     // Can probably be optimized
     constexpr ModularInt& operator*=(const ModularInt& other) {
-        if (!HasModulus()) {
+        if (HasModulus() && other.HasModulus()) {
+            assert(Modulus() == other.Modulus());
+        } else if (!HasModulus()) {
             modulus = other.modulus;
         }
-        if (!other.HasModulus()) {
-            value = 0;
-            return *this;
-        }
-
-        assert(Modulus() == other.Modulus());
         // TODO: This may get out of range with scalars
         value *= other.value;
-        value %= Modulus();
+        if (HasModulus()) {
+            value %= Modulus();
+        }
         return *this;
     }
 
@@ -136,15 +140,13 @@ struct ModularInt {
         if constexpr (!EnableDivision) {
             char x[0] = "Division was not enabled";
         }
-        if (!HasModulus()) {
+
+        if (HasModulus() && other.HasModulus()) {
+            assert(Modulus() == other.Modulus());
+        } else if (!HasModulus()) {
             modulus = other.modulus;
         }
-        if (!other.HasModulus()) {
-            assert(false);
-            return *this;
-        }
-
-        assert(Modulus() == other.Modulus());
+        assert(HasModulus());
 
         // Find inverse of other.value
         value *= boost::integer::extended_euclidean(other.value + Modulus(), Modulus()).x;
@@ -158,12 +160,11 @@ struct ModularInt {
     }
 
     friend bool operator==(const ModularInt& lhs, const ModularInt& rhs) {
-        if ((!lhs.HasModulus() && rhs.value == 0) || (!rhs.HasModulus() && lhs.value == 0)) {
-            return true;
-        } else if (!lhs.HasModulus() || !rhs.HasModulus()) {
-            return false;
+        if (!lhs.HasModulus() && !rhs.HasModulus()) {
+            return lhs.value == rhs.value;
         }
 
+        assert(lhs.HasModulus() && rhs.HasModulus());
         assert(lhs.Modulus() == rhs.Modulus());
         return lhs.value == rhs.value || lhs.value == rhs.value + lhs.Modulus() ||
                lhs.value == rhs.value - lhs.Modulus();
@@ -180,18 +181,29 @@ struct ModularInt {
         // To (-M/2, M/2]
         if (rep > Modulus() / 2) {
             rep -= Modulus();
-        } else if (rep <= -Modulus() / 2) {
+        } else if (rep <= -(Modulus() + 1) / 2) {
             rep += Modulus();
         }
         return rep;
     }
 
-    template <typename NewTag = Tag>
-    ModularInt<T, NewTag> Reinterpret(const ModulusType& new_modulus) const {
-        if constexpr (std::is_scalar_v<T>) {
-            return ModularInt<T, NewTag>{GetRepresentative() % new_modulus, new_modulus};
+    template <typename U = ModularInt>
+    U Reinterpret(const U::ModulusType& new_modulus) const {
+        using NewModulusType = U::ModulusType;
+        using NewValueType = U::ValueType;
+        using IntermediateType =
+            std::conditional_t<std::conjunction_v<std::is_scalar<T>, std::is_scalar<NewValueType>>,
+                               std::common_type_t<T, NewValueType>,
+                               std::conditional_t<std::is_scalar_v<T>, NewValueType, T>>;
+
+        if constexpr (std::is_scalar_v<NewModulusType>) {
+            return U{
+                NewValueType{IntermediateType{GetRepresentative()} % IntermediateType{new_modulus}},
+                new_modulus};
         } else {
-            return ModularInt<T, NewTag>{GetRepresentative() % *new_modulus, new_modulus};
+            return U{NewValueType{IntermediateType{GetRepresentative()} %
+                                  IntermediateType{*new_modulus}},
+                     new_modulus};
         }
     }
 

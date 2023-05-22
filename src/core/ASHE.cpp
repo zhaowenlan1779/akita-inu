@@ -4,14 +4,12 @@
 #include <cmath>
 #include <iostream>
 #include <boost/integer/common_factor.hpp>
-#include <kiss_fft.h>
 #include "core/ASHE.h"
+#include "core/kissfft.hpp"
 
-ASHE::ASHE(std::size_t lambda, const std::shared_ptr<BigInt>& d_, std::size_t D_, std::size_t N)
-    : D(D_), d(d_) {
-
+ASHE::ASHE(std::size_t lambda, int64_t d_, std::size_t D_, std::size_t N) : D(D_), d(d_) {
     // Setup parameters
-    const auto logd = boost::multiprecision::msb(*d) + 1;
+    const std::size_t logd = std::ceil(std::log2(d));
     const auto t = D * logd + std::log2(N) + logd + 1;
 
     // Raise to next 2's power. This does not make it very much bigger.
@@ -25,7 +23,7 @@ ASHE::ASHE(std::size_t lambda, const std::shared_ptr<BigInt>& d_, std::size_t D_
     // Select q as smallest integer larger than (2n^(3/2) log n)^t coprime to d
     BigInt tentative_q = boost::multiprecision::pow(
         BigInt{std::ceil(2 * n * std::sqrt(n) * std::log2(n))}, static_cast<std::size_t>(t) + 1);
-    while (boost::math::gcd(tentative_q, *d) != 1) {
+    while (boost::math::gcd(tentative_q, d) != 1) {
         ++tentative_q;
     }
     q = std::make_shared<BigInt>(std::move(tentative_q));
@@ -39,7 +37,7 @@ ASHE::QElement ASHE::Gen() const {
 
 ASHE::RElement ASHE::Enc(const QElement& key, const dInt& plaintext) const {
     const auto a = SampleUniform();
-    const auto b = a * key + qInt{*d, q} * SampleError() + plaintext.Reinterpret<qIntTag>(q);
+    const auto b = a * key + qInt{d, q} * SampleError() + plaintext.Reinterpret<qInt>(q);
 
     // Construct ct = -aY + b
     RElement ct{n, D};
@@ -50,7 +48,7 @@ ASHE::RElement ASHE::Enc(const QElement& key, const dInt& plaintext) const {
     return ct;
 }
 
-ASHE::dInt ASHE::Dec(const QElement& key, const RElement& ct) const {
+dInt ASHE::Dec(const QElement& key, const RElement& ct) const {
     // Evaluate ct on key
     QElement result{n};
 
@@ -70,12 +68,12 @@ ASHE::dInt ASHE::Dec(const QElement& key, const RElement& ct) const {
         }
     }
 
-    return result.coeffs[0].Reinterpret<dIntTag>(d);
+    return result.coeffs[0].Reinterpret<dInt>(d);
 }
 
 ASHE::RElement ASHE::Lift(const dInt& val) const {
     RElement ct{n, D};
-    ct.Coeff(0, 0) = val.Reinterpret<qIntTag>(q);
+    ct.Coeff(0, 0) = val.Reinterpret<qInt>(q);
     return ct;
 }
 
@@ -119,27 +117,27 @@ bool ASHE::SampleErrorTrial(QElement& out) const {
     // Sample an embedding from the distribution.
     // The values are 0 for even indices, such that inverse DFT can recover the coefficients
     // from the embedding
-    std::vector<kiss_fft_cpx> embedding(2 * n);
+    std::vector<std::complex<double>> embedding(2 * n);
     for (std::size_t i = 0; i < r.size(); ++i) {
         boost::random::normal_distribution dist{0.0, r[i] / 2 / std::sqrt(PI)};
 
-        embedding[2 * i + 1].r = dist(gen);
-        embedding[2 * i + 1].i = dist(gen);
-
-        embedding[2 * (n - 1 - i) + 1].r = embedding[2 * i + 1].r;
-        embedding[2 * (n - 1 - i) + 1].i = -embedding[2 * i + 1].i;
+        using namespace std::complex_literals;
+        embedding[2 * i + 1] = dist(gen) + dist(gen) * 1i;
+        embedding[2 * (n - 1 - i) + 1] = std::conj(embedding[2 * i + 1]);
     }
 
     // Inverse DFT on the embeddings to obtain coefficients * n / alpha
-    auto* cfg = kiss_fft_alloc(embedding.size(), true, nullptr, nullptr);
-    kiss_fft(cfg, embedding.data(), embedding.data());
-    kiss_fft_free(cfg);
+    kissfft<double> fft{embedding.size(), true};
+
+    std::vector<std::complex<double>> coeffs(2 * n);
+    fft.transform(embedding.data(), coeffs.data());
+    embedding.clear();
 
     for (std::size_t i = 0; i < n; ++i) {
         // alpha = 2 / q => q * r * alpha / n = 2 * r / n
         // We multiply this result by n because we are working in R and not R^\vee.
         // Ref: A Toolkit for Ring-LWE Cryptography, Page 6; Ring-LWE in Polynomial Rings, Page 39
-        const auto value = 2 * embedding[i].r;
+        const auto value = 2 * coeffs[i].real();
 
         if (std::abs(std::round(value)) > beta) {
             return false;
