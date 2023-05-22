@@ -117,8 +117,9 @@ MultiPoly MultivariateInterpolator::Interpolate(std::span<const dInt> ys) const 
     return InterpolateStep(ys, m);
 }
 
-MultiPoly MultivariateInterpolator::InterpolateStep(std::span<const dInt> ys, std::size_t m) const {
-    if (m == 1) {
+MultiPoly MultivariateInterpolator::InterpolateStep(std::span<const dInt> ys,
+                                                    std::size_t stage) const {
+    if (stage == 1) {
         MultiPoly poly{static_cast<std::size_t>(d), 1};
         poly.coeffs = uni_interp.Interpolate(ys).coeffs;
         return poly;
@@ -133,10 +134,10 @@ MultiPoly MultivariateInterpolator::InterpolateStep(std::span<const dInt> ys, st
         }
     }
 
-    MultiPoly poly{static_cast<std::size_t>(d), m};
+    MultiPoly poly{static_cast<std::size_t>(d), stage};
     for (std::size_t i = 0; i < static_cast<std::size_t>(d); ++i) {
         auto coeffs =
-            InterpolateStep({c.begin() + (ys.size() / d) * i, ys.size() / d}, m - 1).coeffs;
+            InterpolateStep({c.begin() + (ys.size() / d) * i, ys.size() / d}, stage - 1).coeffs;
 
         // Note: The order of dimensions is reversed in the polynomial.
         std::move(coeffs.begin(), coeffs.end(), poly.coeffs.begin() + i * ys.size() / d);

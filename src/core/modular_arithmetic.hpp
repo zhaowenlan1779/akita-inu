@@ -188,7 +188,7 @@ struct ModularInt {
     }
 
     template <typename U = ModularInt>
-    U Reinterpret(const U::ModulusType& new_modulus) const {
+    U Reinterpret(const typename U::ModulusType& new_modulus) const {
         using NewModulusType = U::ModulusType;
         using NewValueType = U::ValueType;
         using IntermediateType =

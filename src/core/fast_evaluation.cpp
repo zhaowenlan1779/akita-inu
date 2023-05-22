@@ -92,16 +92,16 @@ void MultidimensionalFFT::EvaluateUnivariate(std::span<const dInt> coeffs,
 }
 
 std::vector<dInt> MultidimensionalFFT::EvaluateAllImpl(std::span<const dInt> coeffs,
-                                                       std::size_t m) const {
+                                                       std::size_t stage) const {
     std::vector<dInt> out(coeffs.size());
-    if (m == 1) {
+    if (stage == 1) {
         EvaluateUnivariate(coeffs, out);
         return out;
     }
     std::vector<dInt> final_coeffs(coeffs.size());
     for (std::size_t i = 0; i < static_cast<std::size_t>(d); ++i) {
         auto evals =
-            EvaluateAllImpl({coeffs.begin() + coeffs.size() / d * i, coeffs.size() / d}, m - 1);
+            EvaluateAllImpl({coeffs.begin() + coeffs.size() / d * i, coeffs.size() / d}, stage - 1);
         for (std::size_t j = 0; j < evals.size(); ++j) {
             final_coeffs[j * d + i] = evals[j];
         }

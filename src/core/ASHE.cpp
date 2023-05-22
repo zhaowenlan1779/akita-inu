@@ -9,7 +9,7 @@
 
 ASHE::ASHE(std::size_t lambda, int64_t d_, std::size_t D_, std::size_t N) : D(D_), d(d_) {
     // Setup parameters
-    const std::size_t logd = std::ceil(std::log2(d));
+    const auto logd = static_cast<std::size_t>(std::ceil(std::log2(d)));
     const auto t = D * logd + std::log2(N) + logd + 1;
 
     // Raise to next 2's power. This does not make it very much bigger.
@@ -22,7 +22,7 @@ ASHE::ASHE(std::size_t lambda, int64_t d_, std::size_t D_, std::size_t N) : D(D_
 
     // Select q as smallest integer larger than (2n^(3/2) log n)^t coprime to d
     BigInt tentative_q = boost::multiprecision::pow(
-        BigInt{std::ceil(2 * n * std::sqrt(n) * std::log2(n))}, static_cast<std::size_t>(t) + 1);
+        BigInt{std::ceil(2 * n * std::sqrt(n) * std::log2(n))}, static_cast<unsigned int>(t) + 1);
     while (boost::math::gcd(tentative_q, d) != 1) {
         ++tentative_q;
     }
@@ -94,7 +94,7 @@ bool ASHE::SampleErrorTrial(QElement& out) const {
     // Chris Peikert, Oded Regev, and Noah Stephens-Davidowitz. Pseudorandomness
     // of ring-LWE for any ring and modulus. In Hamed Hatami, Pierre McKenzie, and
     // Valerie King, editors, 49th Annual ACM Symposium on Theory of Computing, pages
-    // 461–473. ACM Press, June 2017.
+    // 461-473. ACM Press, June 2017.
 
     // Selected values: alpha = 2 / q
     const auto f2 = std::log2(n);

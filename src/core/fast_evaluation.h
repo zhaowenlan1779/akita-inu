@@ -19,7 +19,7 @@ public:
 
 private:
     void EvaluateUnivariate(std::span<const dInt> coeffs, std::span<dInt> out) const;
-    std::vector<dInt> EvaluateAllImpl(std::span<const dInt> coeffs, std::size_t m) const;
+    std::vector<dInt> EvaluateAllImpl(std::span<const dInt> coeffs, std::size_t stage) const;
 
     int64_t d{};
     std::size_t m{};

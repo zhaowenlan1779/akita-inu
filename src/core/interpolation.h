@@ -41,7 +41,7 @@ public:
     MultiPoly Interpolate(std::span<const dInt> ys) const;
 
 private:
-    MultiPoly InterpolateStep(std::span<const dInt> ys, std::size_t m) const;
+    MultiPoly InterpolateStep(std::span<const dInt> ys, std::size_t stage) const;
 
     int64_t d{};
     std::size_t m{};
