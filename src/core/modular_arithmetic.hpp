@@ -116,6 +116,10 @@ struct ModularInt {
         return new_val;
     }
 
+    using PromoteType =
+        std::conditional_t<std::is_same_v<T, int16_t>, int32_t,
+                           std::conditional_t<std::is_same_v<T, int32_t>, int64_t, T>>;
+
     // Can probably be optimized
     constexpr ModularInt& operator*=(const ModularInt& other) {
         if (HasModulus() && other.HasModulus()) {
@@ -123,10 +127,10 @@ struct ModularInt {
         } else if (!HasModulus()) {
             modulus = other.modulus;
         }
-        // TODO: This may get out of range with scalars
-        value *= other.value;
         if (HasModulus()) {
-            value %= Modulus();
+            value = static_cast<T>(static_cast<PromoteType>(value) * other.value % Modulus());
+        } else {
+            value *= other.value;
         }
         return *this;
     }
@@ -149,8 +153,9 @@ struct ModularInt {
         assert(HasModulus());
 
         // Find inverse of other.value
-        value *= boost::integer::extended_euclidean(other.value + Modulus(), Modulus()).x;
-        value %= Modulus();
+        const auto inv = static_cast<T>(
+            boost::integer::extended_euclidean(other.value + Modulus(), Modulus()).x);
+        value = static_cast<T>(static_cast<PromoteType>(value) * inv % Modulus());
         return *this;
     }
 

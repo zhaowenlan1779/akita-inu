@@ -11,9 +11,6 @@
 
 class ASHE {
 public:
-    struct qIntTag {};
-    using qInt = ModularInt<BigInt, qIntTag>;
-
     using QElement = UnivariateRingPolynomial<qInt>;
     using RElement = BivariateRingPolynomial<qInt>;
 
