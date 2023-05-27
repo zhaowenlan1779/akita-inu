@@ -1,5 +1,5 @@
 // Copyright 2023 Pengfei Zhu
-// Licensed under GPLv2 or any later version.
+// Licensed under MIT.
 
 #include <array>
 #include <catch2/catch_test_macros.hpp>

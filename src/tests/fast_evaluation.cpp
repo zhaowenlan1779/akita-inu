@@ -1,5 +1,5 @@
 // Copyright 2023 Pengfei Zhu
-// Licensed under GPLv2 or any later version.
+// Licensed under MIT.
 
 #include <iostream>
 #include <catch2/catch_test_macros.hpp>
@@ -77,7 +77,7 @@ TEST_CASE("Simple evaluator", "[.DEPIR]") {
         }
     }
 
-    Evaluation::SimpleFastEvaluator eval{std::filesystem::u8path("out/")};
+    Evaluation::SimpleFastEvaluator eval{std::filesystem::u8path("out/"), poly, 137};
     const auto Evaluate = [&poly](Evaluation::pInt x1, Evaluation::pInt x2, Evaluation::pInt x3) {
         Evaluation::pInt result{0, 137};
         Evaluation::pInt c1{1, 137};

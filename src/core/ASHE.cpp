@@ -1,5 +1,5 @@
 // Copyright 2023 Pengfei Zhu
-// Licensed under GPLv2 or any later version.
+// Licensed under MIT.
 
 #include <cmath>
 #include <iostream>
