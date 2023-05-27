@@ -4,6 +4,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <span>
 #include "core/common.h"
 #include "core/kissfft.hpp"
@@ -15,6 +16,8 @@ using pInt = ModularInt<int16_t, pIntTag>;
 // p_i int
 struct piIntTag {};
 using piInt = ModularInt<int16_t, piIntTag>;
+
+class FiniteFieldFFT;
 
 class MultidimensionalFFT {
 public:
@@ -31,7 +34,7 @@ private:
     int16_t p{};
     std::size_t m{};
     int16_t alpha{}; // primitive root
-    kissfft<piInt, piInt> fft;
+    std::unique_ptr<FiniteFieldFFT> fft;
 };
 
 // Fast evaluator over Z_q

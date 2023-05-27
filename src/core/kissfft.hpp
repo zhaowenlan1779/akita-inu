@@ -15,25 +15,200 @@
 #include <utility>
 #include <vector>
 
-namespace detail {
-
-template <typename scalar_t, typename cpx_t = std::complex<scalar_t>>
-struct kissfft_bfly {
+template <typename scalar_t, bool use_kernels = true, typename cpx_t = std::complex<scalar_t>>
+class kissfft {
 public:
-    std::vector<cpx_t> _twiddles;
-
-protected:
     std::size_t _nfft;
     bool _inverse;
-};
-
-template <typename scalar_t, typename cpx_t>
-    requires(std::is_floating_point_v<scalar_t>)
-struct kissfft_bfly<scalar_t, cpx_t> {
-public:
     std::vector<cpx_t> _twiddles;
 
-protected:
+    kissfft(const std::size_t nfft, const bool inverse) {
+        _nfft = nfft;
+        _inverse = inverse;
+
+        if constexpr (std::is_floating_point_v<scalar_t>) {
+            // fill twiddle factors
+            _twiddles.resize(_nfft);
+            const scalar_t phinc = (_inverse ? 2 : -2) * std::acos((scalar_t)-1) / _nfft;
+            for (std::size_t i = 0; i < _nfft; ++i)
+                _twiddles[i] = std::exp(cpx_t(0, i * phinc));
+        }
+
+        // factorize
+        // start factoring out 4's, then 2's, then 3,5,7,9,...
+        std::size_t n = _nfft;
+        std::size_t p = 4;
+        do {
+            while (n % p) {
+                switch (p) {
+                case 4:
+                    p = 2;
+                    break;
+                case 2:
+                    p = 3;
+                    break;
+                default:
+                    p += 2;
+                    break;
+                }
+                if (p * p > n)
+                    p = n; // no more factors
+            }
+            n /= p;
+            _stageRadix.push_back(p);
+            _stageRemainder.push_back(n);
+        } while (n > 1);
+    }
+
+    /// Calculates the complex Discrete Fourier Transform.
+    ///
+    /// The size of the passed arrays must be passed in the constructor.
+    /// The sum of the squares of the absolute values in the @c dst
+    /// array will be @c N times the sum of the squares of the absolute
+    /// values in the @c src array, where @c N is the size of the array.
+    /// In other words, the l_2 norm of the resulting array will be
+    /// @c sqrt(N) times as big as the l_2 norm of the input array.
+    /// This is also the case when the inverse flag is set in the
+    /// constructor. Hence when applying the same transform twice, but with
+    /// the inverse flag changed the second time, then the result will
+    /// be equal to the original input times @c N.
+    void transform(const cpx_t* fft_in, cpx_t* fft_out, const std::size_t stage = 0,
+                   const std::size_t fstride = 1, const std::size_t in_stride = 1) const {
+        const std::size_t p = _stageRadix[stage];
+        const std::size_t m = _stageRemainder[stage];
+        cpx_t* const Fout_beg = fft_out;
+        cpx_t* const Fout_end = fft_out + p * m;
+
+        if (m == 1) {
+            do {
+                *fft_out = *fft_in;
+                fft_in += fstride * in_stride;
+            } while (++fft_out != Fout_end);
+        } else {
+            do {
+                // recursive call:
+                // DFT of size m*p performed by doing
+                // p instances of smaller DFTs of size m,
+                // each one takes a decimated version of the input
+                transform(fft_in, fft_out, stage + 1, fstride * p, in_stride);
+                fft_in += fstride * in_stride;
+            } while ((fft_out += m) != Fout_end);
+        }
+
+        fft_out = Fout_beg;
+
+        // recombine the p smaller DFTs
+        if constexpr (use_kernels) {
+            switch (p) {
+            case 2:
+                kf_bfly2(fft_out, fstride, m);
+                break;
+            case 3:
+                kf_bfly3(fft_out, fstride, m);
+                break;
+            case 4:
+                kf_bfly4(fft_out, fstride, m);
+                break;
+            case 5:
+                kf_bfly5(fft_out, fstride, m);
+                break;
+            default:
+                kf_bfly_generic(fft_out, fstride, m, p);
+                break;
+            }
+        } else {
+            // The original specialized implementations for 3, 4, 5 are broken for finite field.
+            // I do not wish to unroll the loops myself so I'll just rely on the compiler.
+            switch (p) {
+            case 2:
+                kf_bfly2(fft_out, fstride, m);
+                break;
+            case 3:
+                kf_bfly<3>(fft_out, fstride, m);
+                break;
+            case 4:
+                kf_bfly<4>(fft_out, fstride, m);
+                break;
+            case 5:
+                kf_bfly<5>(fft_out, fstride, m);
+                break;
+            default:
+                kf_bfly_generic(fft_out, fstride, m, p);
+                break;
+            }
+        }
+    }
+
+    /// Calculates the Discrete Fourier Transform (DFT) of a real input
+    /// of size @c 2*N.
+    ///
+    /// The 0-th and N-th value of the DFT are real numbers. These are
+    /// stored in @c dst[0].real() and @c dst[0].imag() respectively.
+    /// The remaining DFT values up to the index N-1 are stored in
+    /// @c dst[1] to @c dst[N-1].
+    /// The other half of the DFT values can be calculated from the
+    /// symmetry relation
+    ///     @code
+    ///         DFT(src)[2*N-k] == conj( DFT(src)[k] );
+    ///     @endcode
+    /// The same scaling factors as in @c transform() apply.
+    ///
+    /// @note For this to work, the types @c scalar_t and @c cpx_t
+    /// must fulfill the following requirements:
+    ///
+    /// For any object @c z of type @c cpx_t,
+    /// @c reinterpret_cast<scalar_t(&)[2]>(z)[0] is the real part of @c z and
+    /// @c reinterpret_cast<scalar_t(&)[2]>(z)[1] is the imaginary part of @c z.
+    /// For any pointer to an element of an array of @c cpx_t named @c p
+    /// and any valid array index @c i, @c reinterpret_cast<T*>(p)[2*i]
+    /// is the real part of the complex number @c p[i], and
+    /// @c reinterpret_cast<T*>(p)[2*i+1] is the imaginary part of the
+    /// complex number @c p[i].
+    ///
+    /// Since C++11, these requirements are guaranteed to be satisfied for
+    /// @c scalar_ts being @c float, @c double or @c long @c double
+    /// together with @c cpx_t being @c std::complex<scalar_t>.
+    void transform_real(const scalar_t* const src, cpx_t* const dst) const {
+        if constexpr (!std::is_floating_point_v<scalar_t>) {
+            char x[0] = "Cannot do this for non floating point!";
+        }
+
+        const std::size_t N = _nfft;
+        if (N == 0)
+            return;
+
+        // perform complex FFT
+        transform(reinterpret_cast<const cpx_t*>(src), dst);
+
+        // post processing for k = 0 and k = N
+        dst[0] = cpx_t(dst[0].real() + dst[0].imag(), dst[0].real() - dst[0].imag());
+
+        // post processing for all the other k = 1, 2, ..., N-1
+        const scalar_t pi = std::acos((scalar_t)-1);
+        const scalar_t half_phi_inc = (_inverse ? pi : -pi) / N;
+        const cpx_t twiddle_mul = std::exp(cpx_t(0, half_phi_inc));
+        for (std::size_t k = 1; 2 * k < N; ++k) {
+            const cpx_t w = (scalar_t)0.5 * cpx_t(dst[k].real() + dst[N - k].real(),
+                                                  dst[k].imag() - dst[N - k].imag());
+            const cpx_t z = (scalar_t)0.5 * cpx_t(dst[k].imag() + dst[N - k].imag(),
+                                                  -dst[k].real() + dst[N - k].real());
+            const cpx_t twiddle = k % 2 == 0 ? _twiddles[k / 2] : _twiddles[k / 2] * twiddle_mul;
+            dst[k] = w + twiddle * z;
+            dst[N - k] = std::conj(w - twiddle * z);
+        }
+        if (N % 2 == 0)
+            dst[N / 2] = std::conj(dst[N / 2]);
+    }
+
+private:
+    void kf_bfly2(cpx_t* Fout, const size_t fstride, const std::size_t m) const {
+        for (std::size_t k = 0; k < m; ++k) {
+            const cpx_t t = Fout[m + k] * _twiddles[k * fstride];
+            Fout[m + k] = Fout[k] - t;
+            Fout[k] += t;
+        }
+    }
+
     void kf_bfly3(cpx_t* Fout, const std::size_t fstride, const std::size_t m) const {
         std::size_t k = m;
         const std::size_t m2 = 2 * m;
@@ -143,145 +318,9 @@ protected:
         }
     }
 
-    std::size_t _nfft;
-    bool _inverse;
-};
-
-} // namespace detail
-
-template <typename scalar_t, typename cpx_t = std::complex<scalar_t>>
-class kissfft : public detail::kissfft_bfly<scalar_t, cpx_t> {
-public:
-    kissfft(const std::size_t nfft, const bool inverse) {
-        this->_nfft = nfft;
-        this->_inverse = inverse;
-
-        if constexpr (std::is_floating_point_v<scalar_t>) {
-            // fill twiddle factors
-            this->_twiddles.resize(this->_nfft);
-            const scalar_t phinc =
-                (this->_inverse ? 2 : -2) * std::acos((scalar_t)-1) / this->_nfft;
-            for (std::size_t i = 0; i < this->_nfft; ++i)
-                this->_twiddles[i] = std::exp(cpx_t(0, i * phinc));
-        }
-
-        // factorize
-        // start factoring out 4's, then 2's, then 3,5,7,9,...
-        std::size_t n = this->_nfft;
-        std::size_t p = 4;
-        do {
-            while (n % p) {
-                switch (p) {
-                case 4:
-                    p = 2;
-                    break;
-                case 2:
-                    p = 3;
-                    break;
-                default:
-                    p += 2;
-                    break;
-                }
-                if (p * p > n)
-                    p = n; // no more factors
-            }
-            n /= p;
-            _stageRadix.push_back(p);
-            _stageRemainder.push_back(n);
-        } while (n > 1);
-    }
-
-    /// Calculates the complex Discrete Fourier Transform.
-    ///
-    /// The size of the passed arrays must be passed in the constructor.
-    /// The sum of the squares of the absolute values in the @c dst
-    /// array will be @c N times the sum of the squares of the absolute
-    /// values in the @c src array, where @c N is the size of the array.
-    /// In other words, the l_2 norm of the resulting array will be
-    /// @c sqrt(N) times as big as the l_2 norm of the input array.
-    /// This is also the case when the inverse flag is set in the
-    /// constructor. Hence when applying the same transform twice, but with
-    /// the inverse flag changed the second time, then the result will
-    /// be equal to the original input times @c N.
-    void transform(const cpx_t* fft_in, cpx_t* fft_out, const std::size_t stage = 0,
-                   const std::size_t fstride = 1, const std::size_t in_stride = 1) const {
-        const std::size_t p = _stageRadix[stage];
-        const std::size_t m = _stageRemainder[stage];
-        cpx_t* const Fout_beg = fft_out;
-        cpx_t* const Fout_end = fft_out + p * m;
-
-        if (m == 1) {
-            do {
-                *fft_out = *fft_in;
-                fft_in += fstride * in_stride;
-            } while (++fft_out != Fout_end);
-        } else {
-            do {
-                // recursive call:
-                // DFT of size m*p performed by doing
-                // p instances of smaller DFTs of size m,
-                // each one takes a decimated version of the input
-                transform(fft_in, fft_out, stage + 1, fstride * p, in_stride);
-                fft_in += fstride * in_stride;
-            } while ((fft_out += m) != Fout_end);
-        }
-
-        fft_out = Fout_beg;
-
-        // recombine the p smaller DFTs
-        if constexpr (std::is_floating_point_v<scalar_t>) {
-            switch (p) {
-            case 2:
-                kf_bfly2(fft_out, fstride, m);
-                break;
-            case 3:
-                this->kf_bfly3(fft_out, fstride, m);
-                break;
-            case 4:
-                this->kf_bfly4(fft_out, fstride, m);
-                break;
-            case 5:
-                this->kf_bfly5(fft_out, fstride, m);
-                break;
-            default:
-                kf_bfly_generic(fft_out, fstride, m, p);
-                break;
-            }
-        } else {
-            // The original specialized implementations for 3, 4, 5 are broken for finite field.
-            // I do not wish to unroll the loops myself so I'll just rely on the compiler.
-            switch (p) {
-            case 2:
-                kf_bfly2(fft_out, fstride, m);
-                break;
-            case 3:
-                kf_bfly<3>(fft_out, fstride, m);
-                break;
-            case 4:
-                kf_bfly<4>(fft_out, fstride, m);
-                break;
-            case 5:
-                kf_bfly<5>(fft_out, fstride, m);
-                break;
-            default:
-                kf_bfly_generic(fft_out, fstride, m, p);
-                break;
-            }
-        }
-    }
-
-private:
-    void kf_bfly2(cpx_t* Fout, const size_t fstride, const std::size_t m) const {
-        for (std::size_t k = 0; k < m; ++k) {
-            const cpx_t t = Fout[m + k] * this->_twiddles[k * fstride];
-            Fout[m + k] = Fout[k] - t;
-            Fout[k] += t;
-        }
-    }
-
     template <std::size_t p>
     void kf_bfly(cpx_t* const Fout, const size_t fstride, const std::size_t m) const {
-        const cpx_t* twiddles = &this->_twiddles[0];
+        const cpx_t* twiddles = &_twiddles[0];
         cpx_t scratch[p];
 
         for (std::size_t u = 0; u < m; ++u) {
@@ -297,8 +336,8 @@ private:
                 Fout[k] = scratch[0];
                 for (std::size_t q = 1; q < p; ++q) {
                     twidx += fstride * k;
-                    if (twidx >= this->_nfft)
-                        twidx -= this->_nfft;
+                    if (twidx >= _nfft)
+                        twidx -= _nfft;
                     Fout[k] += scratch[q] * twiddles[twidx];
                 }
                 k += m;
@@ -309,7 +348,7 @@ private:
     /* perform the butterfly for one stage of a mixed radix FFT */
     void kf_bfly_generic(cpx_t* const Fout, const size_t fstride, const std::size_t m,
                          const std::size_t p) const {
-        const cpx_t* twiddles = &this->_twiddles[0];
+        const cpx_t* twiddles = &_twiddles[0];
 
         if (p > _scratchbuf.size())
             _scratchbuf.resize(p);
@@ -327,8 +366,8 @@ private:
                 Fout[k] = _scratchbuf[0];
                 for (std::size_t q = 1; q < p; ++q) {
                     twidx += fstride * k;
-                    if (twidx >= this->_nfft)
-                        twidx -= this->_nfft;
+                    if (twidx >= _nfft)
+                        twidx -= _nfft;
                     Fout[k] += _scratchbuf[q] * twiddles[twidx];
                 }
                 k += m;

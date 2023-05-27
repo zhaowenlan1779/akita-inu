@@ -97,9 +97,11 @@ TEST_CASE("Simple evaluator", "[.DEPIR]") {
         return result;
     };
 
-    std::vector<Evaluation::pInt> xs{{112, 137}, {15, 137}, {91, 137}};
-    REQUIRE(eval.Evaluate(std::span{xs}) == Evaluate(xs[0], xs[1], xs[2]));
-
-    std::vector<Evaluation::pInt> xs2{{12, 137}, {75, 137}, {31, 137}};
-    REQUIRE(eval.Evaluate(std::span{xs2}) == Evaluate(xs2[0], xs2[1], xs2[2]));
+    for (std::size_t i = 0; i < 10000; ++i) {
+        const Evaluation::pInt x{static_cast<int16_t>(std::rand() % 137), 137};
+        const Evaluation::pInt y{static_cast<int16_t>(std::rand() % 137), 137};
+        const Evaluation::pInt z{static_cast<int16_t>(std::rand() % 137), 137};
+        const std::array<Evaluation::pInt, 3> xs{{x, y, z}};
+        REQUIRE(eval.Evaluate(xs) == Evaluate(x, y, z));
+    }
 }
