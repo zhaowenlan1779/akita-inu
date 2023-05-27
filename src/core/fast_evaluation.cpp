@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fstream>
 #include <type_traits>
+#include <BS_thread_pool_light.hpp>
 #include <boost/integer/extended_euclidean.hpp>
 #include "core/fast_evaluation.h"
 #include "core/kissfft.hpp"
@@ -254,6 +255,10 @@ int16_t QuickPow(int16_t base, int16_t power, int16_t modulus) {
 }
 
 int16_t GetPrimitiveRoot(int16_t p) {
+    if (p == 2) {
+        return 2; // irrelevant
+    }
+
     const auto s = p - 1;
     const auto& factors = GetDistinctPrimeFactors(s);
 
@@ -319,7 +324,7 @@ std::vector<piInt> MultidimensionalFFT::EvaluateAll(
 void MultidimensionalFFT::EvaluateUnivariate(std::span<const piInt> coeffs,
                                              std::span<piInt> out) const {
     std::vector<piInt> results(p - 1);
-    fft->Transform(coeffs, results);
+    fft->Transform({coeffs.begin(), coeffs.begin() + p - 1}, results);
 
     int16_t cur = 1;
     for (std::size_t i = 0; i < results.size(); ++i) {
@@ -411,22 +416,31 @@ SimpleFastEvaluator::SimpleFastEvaluator(const std::filesystem::path& path_,
         file.write(reinterpret_cast<const char*>(primes.data()), primes.size() * sizeof(int16_t));
     }
 
-    MultivariatePolynomial<piInt> fi(poly.d, poly.m);
+    BS::thread_pool_light pool;
     for (const auto pi : primes) {
-        for (std::size_t j = 0; j < poly.coeffs.size(); ++j) {
-            // Note that this reinterpretation is done in 0, ..., p - 1
-            fi.coeffs[j] = piInt{static_cast<int16_t>((poly.coeffs[j].value + p) % p), pi};
-        }
+        const auto task = [this, pi, &poly] {
+            MultivariatePolynomial<piInt> fi(poly.d, poly.m);
+            for (std::size_t j = 0; j < poly.coeffs.size(); ++j) {
+                // Note that this reinterpretation is done in 0, ..., p - 1
+                fi.coeffs[j] = piInt{static_cast<int16_t>((poly.coeffs[j].value + p) % p), pi};
+            }
 
-        MultidimensionalFFT fft{pi, poly.m};
-        const auto& evaluation = fft.EvaluateAll(fi);
+            MultidimensionalFFT fft{pi, poly.m};
+            const auto& evaluation = fft.EvaluateAll(fi);
 
-        std::ofstream file{path / std::filesystem::u8path(std::to_string(pi) + ".dat"),
-                           std::ios::binary};
-        for (const auto& it : evaluation) {
-            file.write(reinterpret_cast<const char*>(&it.value), sizeof(int16_t));
+            std::ofstream file{path / std::filesystem::u8path(std::to_string(pi) + ".dat"),
+                               std::ios::binary};
+            for (const auto& it : evaluation) {
+                file.write(reinterpret_cast<const char*>(&it.value), sizeof(int16_t));
+            }
+        };
+        if (pi <= 100) {
+            task();
+        } else {
+            pool.push_task(task);
         }
     }
+    pool.wait_for_tasks();
 }
 
 SimpleFastEvaluator::SimpleFastEvaluator(const std::filesystem::path& path_) : path(path_) {

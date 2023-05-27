@@ -12,4 +12,4 @@ add_library(src STATIC
     ring_polynomial.hpp
 )
 
-target_link_libraries(src PUBLIC boost)
+target_link_libraries(src PUBLIC boost thread-pool)
