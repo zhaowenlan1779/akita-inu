@@ -23,7 +23,7 @@ struct ModularInt {
     }
 
     constexpr const T& Modulus() const {
-        if constexpr (std::is_scalar_v<T>) {
+        if constexpr (std::is_scalar_v<ModulusType>) {
             return modulus;
         } else {
             return *modulus;
@@ -31,7 +31,7 @@ struct ModularInt {
     }
 
     constexpr T& Modulus() {
-        if constexpr (std::is_scalar_v<T>) {
+        if constexpr (std::is_scalar_v<ModulusType>) {
             return modulus;
         } else {
             return *modulus;

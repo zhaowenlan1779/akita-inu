@@ -41,18 +41,38 @@ private:
 class SimpleFastEvaluator {
 public:
     // Calculate from poly & p and save to folder.
-    explicit SimpleFastEvaluator(const std::filesystem::path& path,
+    explicit SimpleFastEvaluator(std::filesystem::path path,
                                  const MultivariatePolynomial<pInt>& poly, int16_t p);
     // Load from folder. The files are machine-dependent (endianess)
-    explicit SimpleFastEvaluator(const std::filesystem::path& path);
+    explicit SimpleFastEvaluator(std::filesystem::path path);
     ~SimpleFastEvaluator();
 
     pInt Evaluate(std::span<const pInt> xs) const;
 
 private:
+    std::filesystem::path path;
     int16_t p{};
     std::vector<int16_t> primes;
+
+    static constexpr std::string_view PrimesFile = "primes.dat";
+};
+
+// Combines multiple direct evaluators to make an evaluator with log log q complexity
+class ScalarFastEvaluator {
+public:
+    explicit ScalarFastEvaluator(std::filesystem::path path,
+                                 const MultivariatePolynomial<qInt>& poly,
+                                 std::shared_ptr<BigInt> q);
+    explicit ScalarFastEvaluator(std::filesystem::path path);
+    ~ScalarFastEvaluator();
+
+    qInt Evaluate(std::span<const qInt> xs) const;
+
+private:
     std::filesystem::path path;
+    std::shared_ptr<BigInt> q;
+    std::vector<int16_t> primes;
+    std::vector<std::unique_ptr<SimpleFastEvaluator>> evaluators;
 
     static constexpr std::string_view PrimesFile = "primes.dat";
 };

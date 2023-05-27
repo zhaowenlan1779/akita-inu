@@ -105,3 +105,46 @@ TEST_CASE("Simple evaluator", "[.DEPIR]") {
         REQUIRE(eval.Evaluate(xs) == Evaluate(x, y, z));
     }
 }
+
+TEST_CASE("Scalar evaluator", "[DEPIR]") {
+    const auto q = std::make_shared<BigInt>(17);
+
+    MultivariatePolynomial<qInt> poly{2, 2};
+    for (int16_t i = 0; i < 2; ++i) {
+        for (int16_t j = 0; j < 2; ++j) {
+            const std::size_t idx = i * 2 + j;
+            if (idx % 3 == 0) {
+                poly.coeffs[idx] = qInt{(i + 2) * (j + 1) + 3, q};
+            } else if (idx % 3 == 1) {
+                poly.coeffs[idx] = qInt{(i + 1) + (j + 2) + 2, q};
+            } else {
+                poly.coeffs[idx] = qInt{(j + 4) * (i + 6) + i + 1, q};
+            }
+        }
+    }
+
+    Evaluation::ScalarFastEvaluator eval{std::filesystem::u8path("tmp-scalar-evaluator/")};
+    const auto Evaluate = [&q, &poly](qInt x1, qInt x2) {
+        qInt result{0, q};
+        qInt c1{1, q};
+        for (std::size_t i = 0; i < 2; ++i) { // deg x1
+            qInt c2{1, q};
+            for (std::size_t j = 0; j < 2; ++j) { // deg x2
+                const auto idx = j * 2 + i;
+                result += poly.coeffs[idx] * c1 * c2;
+                c2 *= x2;
+            }
+            c1 *= x1;
+        }
+        return result;
+    };
+
+    for (std::size_t i = 0; i < 17; ++i) {
+        for (std::size_t j = 0; j < 17; ++j) {
+            const qInt x{i, q};
+            const qInt y{j, q};
+            const std::array<qInt, 2> xs{{x, y}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x, y));
+        }
+    }
+}
