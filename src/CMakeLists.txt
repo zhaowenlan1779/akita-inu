@@ -73,6 +73,7 @@ else()
         -Wall
         -Wno-attributes
         -Wno-unused-variable
+        -Wno-deprecated-declarations # For u8path
     )
 
     if(WARNINGS_AS_ERRORS)
