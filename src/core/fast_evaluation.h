@@ -105,4 +105,31 @@ private:
     static constexpr std::string_view MetadataFile = "univariate.dat";
 };
 
+// E(Y) = Y^e1 + 1, E(Z) = Z^e2 + 1
+class BivariateFastEvaluator {
+public:
+    using Element = BivariateRingPolynomial<qInt>;
+
+    explicit BivariateFastEvaluator(std::filesystem::path path,
+                                    const MultivariatePolynomial<Element>& poly,
+                                    std::shared_ptr<BigInt> q, std::size_t e1, std::size_t e2);
+    explicit BivariateFastEvaluator(std::filesystem::path path);
+    ~BivariateFastEvaluator();
+
+    Element Evaluate(std::span<const Element> xs) const;
+
+private:
+    std::filesystem::path path;
+    std::shared_ptr<BigInt> q;
+    std::size_t e1{};
+    std::size_t e2{};
+    BigInt M;
+    std::size_t D1{};
+    std::size_t D2{};
+    std::shared_ptr<BigInt> r;
+    std::unique_ptr<UnivariateFastEvaluator> evaluator;
+
+    static constexpr std::string_view MetadataFile = "bivariate.dat";
+};
+
 } // namespace Evaluation

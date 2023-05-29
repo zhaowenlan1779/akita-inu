@@ -217,3 +217,55 @@ TEST_CASE("Univariate evaluator", "[DEPIR]") {
 
     std::filesystem::remove_all(TempPath);
 }
+
+TEST_CASE("Bivariate evaluator", "[DEPIR]") {
+    const auto q = std::make_shared<BigInt>(2);
+
+    using Element = Evaluation::BivariateFastEvaluator::Element;
+    const auto GenerateElement = [&q] {
+        Element val{2, 2};
+        for (auto& it : val.coeffs) {
+            it = qInt{std::rand() % 2, q};
+        }
+        return val;
+    };
+
+    MultivariatePolynomial<Element> poly{2, 1};
+    for (auto& it : poly.coeffs) {
+        it = GenerateElement();
+    }
+
+    const auto Evaluate = [&poly](const Element& x1) {
+        Element result{2, 2};
+
+        Element c1{2, 2};
+        c1.coeffs[0] = BigInt{1};
+        for (std::size_t i = 0; i < 2; ++i) { // deg x1
+            result += poly.coeffs[i] * c1;
+            c1 *= x1;
+        }
+        return result;
+    };
+
+    static const auto TempPath = std::filesystem::u8path("tmp-bivariate-evaluator/");
+    {
+        // Save
+        Evaluation::BivariateFastEvaluator eval{TempPath, poly, q, 2, 2};
+        for (std::size_t i = 0; i < 10; ++i) {
+            const auto x1 = GenerateElement();
+            const std::array<Element, 1> xs{{x1}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x1));
+        }
+    }
+    {
+        // Load
+        Evaluation::BivariateFastEvaluator eval{TempPath};
+        for (std::size_t i = 0; i < 10; ++i) {
+            const auto x1 = GenerateElement();
+            const std::array<Element, 1> xs{{x1}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x1));
+        }
+    }
+
+    std::filesystem::remove_all(TempPath);
+}

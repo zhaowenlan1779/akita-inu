@@ -684,4 +684,114 @@ UnivariateFastEvaluator::Element UnivariateFastEvaluator::Evaluate(
     return result;
 }
 
+BivariateFastEvaluator::BivariateFastEvaluator(std::filesystem::path path_,
+                                               const MultivariatePolynomial<Element>& poly,
+                                               std::shared_ptr<BigInt> q_, std::size_t e1_,
+                                               std::size_t e2_)
+    : path(std::move(path_)), q(std::move(q_)), e1(e1_), e2(e2_) {
+
+    std::filesystem::create_directories(path);
+
+    M = boost::multiprecision::pow(BigInt{poly.d}, static_cast<unsigned int>(poly.m)) *
+            boost::multiprecision::pow(e1 * e2 * (*q - 1),
+                                       static_cast<unsigned int>((poly.d - 1) * poly.m + 1)) +
+        1;
+
+    D1 = (e1 - 1) * ((poly.d - 1) * poly.m + 1);
+    D2 = (e2 - 1) * ((poly.d - 1) * poly.m + 1);
+
+    r = std::make_shared<BigInt>();
+    *r = boost::multiprecision::pow(M, static_cast<unsigned int>(D2 + 1));
+
+    {
+        std::ofstream file{path / std::filesystem::u8path(MetadataFile), std::ios::binary};
+        WriteBigInt(file, *q);
+        file.write(reinterpret_cast<const char*>(&e1), sizeof(std::size_t));
+        file.write(reinterpret_cast<const char*>(&e2), sizeof(std::size_t));
+        WriteBigInt(file, M);
+        file.write(reinterpret_cast<const char*>(&D1), sizeof(std::size_t));
+        file.write(reinterpret_cast<const char*>(&D2), sizeof(std::size_t));
+        WriteBigInt(file, *r);
+    }
+
+    // Reduce f modulo Z - M (second variable is considered Z here)
+    MultivariatePolynomial<UnivariateFastEvaluator::Element> f_reduced(poly.d, poly.m);
+    for (std::size_t i = 0; i < poly.coeffs.size(); ++i) {
+        const auto& val = poly.coeffs[i];
+        auto& result = f_reduced.coeffs[i];
+        result = UnivariateFastEvaluator::Element{D1 + 1};
+
+        BigInt cur = 1;
+        for (std::size_t j = 0; j < val.D; ++j) {
+            for (std::size_t k = 0; k < val.n; ++k) {
+                result.coeffs[k] += qInt{cur * ((val.Coeff(k, j).value + *q) % (*q)), r};
+            }
+            cur *= M;
+        }
+    }
+
+    evaluator = std::make_unique<UnivariateFastEvaluator>(path, f_reduced, r, D1 + 1);
+}
+
+BivariateFastEvaluator::BivariateFastEvaluator(std::filesystem::path path_)
+    : path(std::move(path_)) {
+
+    {
+        std::ifstream file{path / std::filesystem::u8path(MetadataFile), std::ios::binary};
+
+        q = std::make_shared<BigInt>();
+        r = std::make_shared<BigInt>();
+
+        ReadBigInt(file, *q);
+        file.read(reinterpret_cast<char*>(&e1), sizeof(std::size_t));
+        file.read(reinterpret_cast<char*>(&e2), sizeof(std::size_t));
+        ReadBigInt(file, M);
+        file.read(reinterpret_cast<char*>(&D1), sizeof(std::size_t));
+        file.read(reinterpret_cast<char*>(&D2), sizeof(std::size_t));
+        ReadBigInt(file, *r);
+    }
+
+    evaluator = std::make_unique<UnivariateFastEvaluator>(path);
+}
+
+BivariateFastEvaluator::~BivariateFastEvaluator() = default;
+
+BivariateFastEvaluator::Element BivariateFastEvaluator::Evaluate(
+    std::span<const Element> xs) const {
+
+    // Reduce xs modulo Z - M
+    std::vector<UnivariateFastEvaluator::Element> xs_reduced(xs.size());
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        const auto& val = xs[i];
+        auto& result = xs_reduced[i];
+        result = UnivariateFastEvaluator::Element{D1 + 1};
+
+        BigInt cur = 1;
+        for (std::size_t j = 0; j < val.D; ++j) {
+            for (std::size_t k = 0; k < val.n; ++k) {
+                result.coeffs[k] += qInt{cur * ((val.Coeff(k, j).value + *q) % (*q)), r};
+            }
+            cur *= M;
+        }
+    }
+
+    const auto& beta = evaluator->Evaluate(xs_reduced);
+
+    Element result{e1, e2};
+    for (std::size_t i = 0; i < beta.coeffs.size(); ++i) {
+        BigInt value = (beta.coeffs[i].value + *r) % (*r);
+
+        for (std::size_t j = 0; j <= D2; ++j) {
+            const bool negative = ((i / e1) & 1) != ((j / e2) & 1);
+            if (negative) {
+                result.Coeff(i % e1, j % e2) -= qInt{value % M, q};
+            } else {
+                result.Coeff(i % e1, j % e2) += qInt{value % M, q};
+            }
+            value /= M;
+        }
+    }
+    return result;
+}
+
 } // namespace Evaluation
