@@ -191,7 +191,7 @@ double EstimateCost(int16_t n) {
         result += 2;
         n >>= 1;
     }
-    for (std::size_t x = 3; x * x <= static_cast<std::size_t>(n); x += 2) {
+    for (int16_t x = 3; x * x <= n; x += 2) {
         while (n % x == 0) {
             // penalize larger prime factors
             result += (x <= 5) ? double(x) : Penalty * double(x);
@@ -259,7 +259,7 @@ int16_t GetPrimitiveRoot(int16_t p) {
         return 2; // irrelevant
     }
 
-    const auto s = p - 1;
+    const int16_t s = p - 1;
     const auto& factors = GetDistinctPrimeFactors(s);
 
     // Find the smallest primitive root
@@ -465,29 +465,21 @@ SimpleFastEvaluator::SimpleFastEvaluator(std::filesystem::path path_) : path(std
 
 SimpleFastEvaluator::~SimpleFastEvaluator() = default;
 
-// Returns the result of the CRT modulo p
 template <typename T, typename U = T, typename V = T>
 static T ChineseRemainderTheorem(std::span<U> results, std::span<V> moduli, T p) {
-    T cur_result = static_cast<T>(results[0] % p);
-    T cur_modulus = static_cast<T>(moduli[0] % p);
+    BigInt cur_result = results[0];
+    BigInt cur_modulus = moduli[0];
     for (std::size_t i = 1; i < results.size(); ++i) {
-        const auto result = static_cast<T>(results[i] % p);
-        const auto modulus = static_cast<T>(moduli[i] % p);
+        const BigInt modulus{moduli[i]};
 
-        const auto& [_, m1, m2] = boost::integer::extended_euclidean(
-            static_cast<T>(cur_modulus + p), static_cast<T>(modulus + p));
+        const auto& [_, m1, m2] = boost::integer::extended_euclidean(cur_modulus, modulus);
 
-        // No need to explicitly promote for s16 but better safe than sorry
-        using PromoteType =
-            std::conditional_t<std::is_same_v<T, int16_t>, int32_t,
-                               std::conditional_t<std::is_same_v<T, int32_t>, int64_t, T>>;
-
-        cur_result = static_cast<T>((static_cast<PromoteType>(cur_result) * m2 % p * modulus % p +
-                                     static_cast<PromoteType>(result) * m1 % p * cur_modulus % p) %
-                                    p);
-        cur_modulus = static_cast<T>(static_cast<PromoteType>(cur_modulus) * modulus % p);
+        cur_result = (cur_result * m2 % cur_modulus) * modulus +
+                     (results[i] % modulus * m1 % modulus) * cur_modulus;
+        cur_modulus *= modulus;
+        cur_result %= cur_modulus;
     }
-    return cur_result;
+    return static_cast<T>((cur_result + cur_modulus) % cur_modulus % p);
 }
 
 pInt SimpleFastEvaluator::Evaluate(std::span<const pInt> xs) const {
@@ -499,33 +491,49 @@ pInt SimpleFastEvaluator::Evaluate(std::span<const pInt> xs) const {
         std::size_t idx = 0;
         std::size_t cur_factor = 1;
         for (auto it = xs.rbegin(); it != xs.rend(); ++it) {
-            idx += ((it->value + p) % pi) * cur_factor;
+            idx += ((it->value + p) % p % pi) * cur_factor;
             cur_factor *= pi;
         }
 
         std::ifstream file{path / std::filesystem::u8path(std::to_string(pi) + ".dat"),
                            std::ios::binary | std::ios::ate};
-        const auto file_size = static_cast<std::size_t>(file.tellg());
-        assert(file_size >= (idx + 1) * sizeof(int16_t));
+        assert(static_cast<std::size_t>(file.tellg()) >= (idx + 1) * sizeof(int16_t));
 
         file.seekg(idx * sizeof(int16_t));
 
         int16_t value{};
         file.read(reinterpret_cast<char*>(&value), sizeof(int16_t));
-        crt_results.emplace_back(value + pi);
+        crt_results.emplace_back(static_cast<int16_t>((value + pi) % pi));
     }
     return pInt{ChineseRemainderTheorem(std::span{crt_results}, std::span{primes}, p), p};
 }
 
+// We do not want to introduce Boost.Serialization
+static void WriteBigInt(std::ofstream& file, const BigInt& value) {
+    const auto& str = value.str();
+    const auto len = str.size();
+    file.write(reinterpret_cast<const char*>(&len), sizeof(std::size_t));
+    file.write(reinterpret_cast<const char*>(str.data()), len);
+}
+
+static void ReadBigInt(std::ifstream& file, BigInt& value) {
+    std::size_t len{};
+    file.read(reinterpret_cast<char*>(&len), sizeof(std::size_t));
+    std::string str(len, 0);
+    file.read(reinterpret_cast<char*>(str.data()), len);
+
+    value = BigInt{str};
+}
+
 ScalarFastEvaluator::ScalarFastEvaluator(std::filesystem::path path_,
-                                         const MultivariatePolynomial<qInt>& poly,
-                                         std::shared_ptr<BigInt> q_)
-    : path(std::move(path_)), q(std::move(q_)) {
+                                         const MultivariatePolynomial<rInt>& poly,
+                                         std::shared_ptr<BigInt> r_)
+    : path(std::move(path_)), r(std::move(r_)) {
 
     std::filesystem::create_directories(path);
 
     const auto logM =
-        poly.m * std::log2(poly.d) + (poly.m * (poly.d - 1) + 1) * boost::multiprecision::msb(*q);
+        poly.m * std::log2(poly.d) + (poly.m * (poly.d - 1) + 1) * boost::multiprecision::msb(*r);
     const auto p_max = 16 * logM + 1;
 
     assert(p_max <= 16000);
@@ -533,21 +541,15 @@ ScalarFastEvaluator::ScalarFastEvaluator(std::filesystem::path path_,
 
     {
         std::ofstream file{path / std::filesystem::u8path(PrimesFile), std::ios::binary};
-
-        // We use a string, because we do not want to introduce Boost.Serialization
-        const auto& q_str = q->str();
-        const auto q_str_len = q_str.size();
-        file.write(reinterpret_cast<const char*>(&q_str_len), sizeof(std::size_t));
-        file.write(q_str.data(), q_str_len);
-
+        WriteBigInt(file, *r);
         WriteArray(file, primes);
     }
 
     MultivariatePolynomial<pInt> fi(poly.d, poly.m);
     for (const auto p : primes) {
         for (std::size_t j = 0; j < poly.coeffs.size(); ++j) {
-            // Note that this reinterpretation is done in 0, ..., q - 1
-            fi.coeffs[j] = pInt{static_cast<int16_t>((poly.coeffs[j].value + *q) % p), p};
+            // Note that this reinterpretation is done in 0, ..., r - 1
+            fi.coeffs[j] = pInt{static_cast<int16_t>((poly.coeffs[j].value + *r) % (*r) % p), p};
         }
 
         evaluators.emplace_back(std::make_unique<SimpleFastEvaluator>(
@@ -556,15 +558,13 @@ ScalarFastEvaluator::ScalarFastEvaluator(std::filesystem::path path_,
 }
 
 ScalarFastEvaluator::ScalarFastEvaluator(std::filesystem::path path_) : path(std::move(path_)) {
-    std::ifstream file{path / std::filesystem::u8path(PrimesFile), std::ios::binary};
+    {
+        std::ifstream file{path / std::filesystem::u8path(PrimesFile), std::ios::binary};
 
-    std::size_t q_str_len{};
-    file.read(reinterpret_cast<char*>(&q_str_len), sizeof(std::size_t));
-    std::string q_str(q_str_len, 0);
-    file.read(reinterpret_cast<char*>(q_str.data()), q_str_len);
-    q = std::make_shared<BigInt>(q_str);
-
-    ReadArray(file, primes);
+        r = std::make_shared<BigInt>();
+        ReadBigInt(file, *r);
+        ReadArray(file, primes);
+    }
     for (const auto p : primes) {
         evaluators.emplace_back(std::make_unique<SimpleFastEvaluator>(
             path / std::filesystem::u8path(std::to_string(p) + "/")));
@@ -573,7 +573,7 @@ ScalarFastEvaluator::ScalarFastEvaluator(std::filesystem::path path_) : path(std
 
 ScalarFastEvaluator::~ScalarFastEvaluator() = default;
 
-qInt ScalarFastEvaluator::Evaluate(std::span<const qInt> xs) const {
+rInt ScalarFastEvaluator::Evaluate(std::span<const rInt> xs) const {
     std::vector<int16_t> crt_results;
     crt_results.reserve(primes.size());
 
@@ -581,12 +581,107 @@ qInt ScalarFastEvaluator::Evaluate(std::span<const qInt> xs) const {
     for (std::size_t i = 0; i < primes.size(); ++i) {
         const auto p = primes[i];
         for (std::size_t j = 0; j < xs.size(); ++j) {
-            const BigInt val = (xs[j].value + *q) % p;
+            const BigInt val = (xs[j].value + *r) % (*r) % p;
             xs_reduced[j] = {static_cast<int16_t>(val), p};
         }
         crt_results.emplace_back(evaluators[i]->Evaluate(xs_reduced).value);
     }
-    return qInt{ChineseRemainderTheorem(std::span{crt_results}, std::span{primes}, *q), q};
+    return rInt{ChineseRemainderTheorem(std::span{crt_results}, std::span{primes}, *r), r};
+}
+
+UnivariateFastEvaluator::UnivariateFastEvaluator(std::filesystem::path path_,
+                                                 const MultivariatePolynomial<Element>& poly,
+                                                 std::shared_ptr<BigInt> q_, std::size_t e_)
+    : path(std::move(path_)), q(std::move(q_)), e(e_) {
+
+    std::filesystem::create_directories(path);
+
+    M = boost::multiprecision::pow(BigInt{poly.d}, static_cast<unsigned int>(poly.m)) *
+            boost::multiprecision::pow(e * (*q - 1),
+                                       static_cast<unsigned int>((poly.d - 1) * poly.m + 1)) +
+        1;
+
+    D = static_cast<unsigned int>((e - 1) * ((poly.d - 1) * poly.m + 1));
+    r = std::make_shared<BigInt>();
+    *r = boost::multiprecision::pow(M, static_cast<unsigned int>(D + 1));
+
+    {
+        std::ofstream file{path / std::filesystem::u8path(MetadataFile), std::ios::binary};
+        WriteBigInt(file, *q);
+        file.write(reinterpret_cast<const char*>(&e), sizeof(std::size_t));
+        WriteBigInt(file, M);
+        file.write(reinterpret_cast<const char*>(&D), sizeof(std::size_t));
+        WriteBigInt(file, *r);
+    }
+
+    // Reduce f modulo Y - M
+    MultivariatePolynomial<rInt> f_reduced(poly.d, poly.m);
+    for (std::size_t i = 0; i < poly.coeffs.size(); ++i) {
+        const auto& val = poly.coeffs[i];
+        auto& result = f_reduced.coeffs[i];
+
+        result = rInt{0, r};
+
+        BigInt cur = 1;
+        for (const auto& it : val.coeffs) {
+            result += BigInt{cur * ((it.value + *q) % *q)};
+            cur *= M;
+        }
+    }
+
+    evaluator = std::make_unique<ScalarFastEvaluator>(path, f_reduced, r);
+}
+
+UnivariateFastEvaluator::UnivariateFastEvaluator(std::filesystem::path path_)
+    : path(std::move(path_)) {
+
+    {
+        std::ifstream file{path / std::filesystem::u8path(MetadataFile), std::ios::binary};
+
+        q = std::make_shared<BigInt>();
+        r = std::make_shared<BigInt>();
+
+        ReadBigInt(file, *q);
+        file.read(reinterpret_cast<char*>(&e), sizeof(std::size_t));
+        ReadBigInt(file, M);
+        file.read(reinterpret_cast<char*>(&D), sizeof(std::size_t));
+        ReadBigInt(file, *r);
+    }
+
+    evaluator = std::make_unique<ScalarFastEvaluator>(path);
+}
+
+UnivariateFastEvaluator::~UnivariateFastEvaluator() = default;
+
+UnivariateFastEvaluator::Element UnivariateFastEvaluator::Evaluate(
+    std::span<const Element> xs) const {
+
+    // Reduce xs modulo Y - M
+    std::vector<rInt> xs_reduced(xs.size());
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        const auto& val = xs[i];
+        auto& result = xs_reduced[i];
+
+        result = rInt{0, r};
+
+        BigInt cur = 1;
+        for (const auto& it : val.coeffs) {
+            result += BigInt{cur * ((it.value + *q) % *q)};
+            cur *= M;
+        }
+    }
+
+    BigInt beta = (evaluator->Evaluate(xs_reduced).value + *r) % (*r);
+    Element result{e};
+    for (std::size_t i = 0; i <= D; ++i) {
+        if ((i / e) & 1) {
+            result.coeffs[i % e] -= qInt{beta % M, q};
+        } else {
+            result.coeffs[i % e] += qInt{beta % M, q};
+        }
+        beta /= M;
+    }
+    return result;
 }
 
 } // namespace Evaluation

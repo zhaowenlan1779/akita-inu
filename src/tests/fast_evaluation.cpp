@@ -57,78 +57,19 @@ TEST_CASE("multidimensional FFT", "[DEPIR]") {
     }
 }
 
-TEST_CASE("Simple evaluator", "[.DEPIR]") {
-    MultivariatePolynomial<Evaluation::pInt> poly{3, 3};
-    for (int16_t i = 0; i < 3; ++i) {
-        for (int16_t j = 0; j < 3; ++j) {
-            for (int16_t k = 0; k < 3; ++k) {
-                const std::size_t idx = i * 3 * 3 + j * 3 + k;
-                if (idx % 4 == 0) {
-                    poly.coeffs[idx] = Evaluation::pInt{
-                        static_cast<int16_t>((i + 2) * (j + 1) * (k + 4) + 3), int16_t{137}};
-                } else if (idx % 4 == 1) {
-                    poly.coeffs[idx] = Evaluation::pInt{
-                        static_cast<int16_t>((i + 1) * (j + 2) + 2 * k + 2), int16_t{137}};
-                } else {
-                    poly.coeffs[idx] = Evaluation::pInt{
-                        static_cast<int16_t>((j + 4) * (k + 6) + i + 1), int16_t{137}};
-                }
-            }
-        }
+TEST_CASE("Simple evaluator", "[DEPIR]") {
+    using Evaluation::pInt;
+
+    MultivariatePolynomial<pInt> poly{2, 2};
+    for (auto& it : poly.coeffs) {
+        it = pInt{static_cast<int16_t>(std::rand() % 20), 20};
     }
 
-    Evaluation::SimpleFastEvaluator eval{std::filesystem::u8path("out/"), poly, 137};
-    const auto Evaluate = [&poly](Evaluation::pInt x1, Evaluation::pInt x2, Evaluation::pInt x3) {
-        Evaluation::pInt result{0, 137};
-        Evaluation::pInt c1{1, 137};
-        for (std::size_t i = 0; i < 3; ++i) { // deg x1
-            Evaluation::pInt c2{1, 137};
-            for (std::size_t j = 0; j < 3; ++j) { // deg x2
-                Evaluation::pInt c3{1, 137};
-                for (std::size_t k = 0; k < 3; ++k) { // deg x3
-                    const auto idx = k * 3 * 3 + j * 3 + i;
-                    result += poly.coeffs[idx] * c1 * c2 * c3;
-                    c3 *= x3;
-                }
-                c2 *= x2;
-            }
-            c1 *= x1;
-        }
-        return result;
-    };
-
-    for (std::size_t i = 0; i < 10000; ++i) {
-        const Evaluation::pInt x{static_cast<int16_t>(std::rand() % 137), 137};
-        const Evaluation::pInt y{static_cast<int16_t>(std::rand() % 137), 137};
-        const Evaluation::pInt z{static_cast<int16_t>(std::rand() % 137), 137};
-        const std::array<Evaluation::pInt, 3> xs{{x, y, z}};
-        REQUIRE(eval.Evaluate(xs) == Evaluate(x, y, z));
-    }
-}
-
-TEST_CASE("Scalar evaluator", "[DEPIR]") {
-    const auto q = std::make_shared<BigInt>(17);
-
-    MultivariatePolynomial<qInt> poly{2, 2};
-    for (int16_t i = 0; i < 2; ++i) {
-        for (int16_t j = 0; j < 2; ++j) {
-            const std::size_t idx = i * 2 + j;
-            if (idx % 3 == 0) {
-                poly.coeffs[idx] = qInt{(i + 2) * (j + 1) + 3, q};
-            } else if (idx % 3 == 1) {
-                poly.coeffs[idx] = qInt{(i + 1) + (j + 2) + 2, q};
-            } else {
-                poly.coeffs[idx] = qInt{(j + 4) * (i + 6) + i + 1, q};
-            }
-        }
-    }
-
-    Evaluation::ScalarFastEvaluator eval{std::filesystem::u8path("tmp-scalar-evaluator/")};
-    const auto Evaluate = [&q, &poly](qInt x1, qInt x2) {
-        qInt result{0, q};
-        qInt c1{1, q};
+    const auto Evaluate = [&poly](const pInt& x1, const pInt& x2) {
+        pInt result{0, 20};
+        pInt c1{1, 20};
         for (std::size_t i = 0; i < 2; ++i) { // deg x1
-            qInt c2{1, q};
+            pInt c2{1, 20};
             for (std::size_t j = 0; j < 2; ++j) { // deg x2
                 const auto idx = j * 2 + i;
                 result += poly.coeffs[idx] * c1 * c2;
@@ -139,12 +80,140 @@ TEST_CASE("Scalar evaluator", "[DEPIR]") {
         return result;
     };
 
-    for (std::size_t i = 0; i < 17; ++i) {
-        for (std::size_t j = 0; j < 17; ++j) {
-            const qInt x{i, q};
-            const qInt y{j, q};
-            const std::array<qInt, 2> xs{{x, y}};
+    static const auto TempPath = std::filesystem::u8path("tmp-simple-evaluator/");
+    {
+        // Save
+        Evaluation::SimpleFastEvaluator eval{TempPath, poly, 20};
+        for (std::size_t i = 0; i < 20; ++i) {
+            for (std::size_t j = 0; j < 20; ++j) {
+                const pInt x{static_cast<int16_t>(i), 20};
+                const pInt y{static_cast<int16_t>(j), 20};
+                const std::array<pInt, 2> xs{{x, y}};
+                REQUIRE(eval.Evaluate(xs) == Evaluate(x, y));
+            }
+        }
+    }
+    {
+        // Load
+        Evaluation::SimpleFastEvaluator eval{TempPath};
+        for (std::size_t i = 0; i < 20; ++i) {
+            for (std::size_t j = 0; j < 20; ++j) {
+                const pInt x{static_cast<int16_t>(i), 20};
+                const pInt y{static_cast<int16_t>(j), 20};
+                const std::array<pInt, 2> xs{{x, y}};
+                REQUIRE(eval.Evaluate(xs) == Evaluate(x, y));
+            }
+        }
+    }
+
+    std::filesystem::remove_all(TempPath);
+}
+
+TEST_CASE("Scalar evaluator", "[DEPIR]") {
+    const auto r = std::make_shared<BigInt>(100);
+
+    using Evaluation::rInt;
+
+    MultivariatePolynomial<rInt> poly{2, 2};
+    for (auto& it : poly.coeffs) {
+        it = rInt{std::rand() % 100, r};
+    }
+
+    const auto Evaluate = [&r, &poly](const rInt& x1, const rInt& x2) {
+        rInt result{0, r};
+        rInt c1{1, r};
+        for (std::size_t i = 0; i < 2; ++i) { // deg x1
+            rInt c2{1, r};
+            for (std::size_t j = 0; j < 2; ++j) { // deg x2
+                const auto idx = j * 2 + i;
+                result += poly.coeffs[idx] * c1 * c2;
+                c2 *= x2;
+            }
+            c1 *= x1;
+        }
+        return result;
+    };
+
+    static const auto TempPath = std::filesystem::u8path("tmp-scalar-evaluator/");
+    {
+        // Save
+        Evaluation::ScalarFastEvaluator eval{TempPath, poly, r};
+        for (std::size_t i = 0; i < 100; ++i) {
+            const rInt x{std::rand() % 100, r};
+            const rInt y{std::rand() % 100, r};
+            const std::array<rInt, 2> xs{{x, y}};
             REQUIRE(eval.Evaluate(xs) == Evaluate(x, y));
         }
     }
+    {
+        // Load
+        Evaluation::ScalarFastEvaluator eval{TempPath};
+        for (std::size_t i = 0; i < 100; ++i) {
+            const rInt x{std::rand() % 100, r};
+            const rInt y{std::rand() % 100, r};
+            const std::array<rInt, 2> xs{{x, y}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x, y));
+        }
+    }
+
+    std::filesystem::remove_all(TempPath);
+}
+
+TEST_CASE("Univariate evaluator", "[DEPIR]") {
+    const auto q = std::make_shared<BigInt>(3);
+
+    using Element = Evaluation::UnivariateFastEvaluator::Element;
+    const auto GenerateElement = [&q] {
+        Element val{2};
+        val.coeffs[0] = qInt{std::rand() % 3, q};
+        val.coeffs[1] = qInt{std::rand() % 3, q};
+        return val;
+    };
+
+    MultivariatePolynomial<Element> poly{2, 2};
+    for (auto& it : poly.coeffs) {
+        it = GenerateElement();
+    }
+
+    const auto Evaluate = [&poly](const Element& x1, const Element& x2) {
+        Element result{2};
+
+        Element c1{2};
+        c1.coeffs[0] = BigInt{1};
+        for (std::size_t i = 0; i < 2; ++i) { // deg x1
+            Element c2{2};
+            c2.coeffs[0] = BigInt{1};
+            for (std::size_t j = 0; j < 2; ++j) { // deg x2
+                const auto idx = j * 2 + i;
+                result += poly.coeffs[idx] * c1 * c2;
+                c2 *= x2;
+            }
+            c1 *= x1;
+        }
+        return result;
+    };
+
+    static const auto TempPath = std::filesystem::u8path("tmp-univariate-evaluator/");
+    {
+        // Save
+        Evaluation::UnivariateFastEvaluator eval{TempPath, poly, q, 2};
+        for (std::size_t i = 0; i < 100; ++i) {
+            const auto x1 = GenerateElement();
+            const auto x2 = GenerateElement();
+            const std::array<Element, 2> xs{{x1, x2}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x1, x2));
+        }
+    }
+    {
+        // Load
+        Evaluation::UnivariateFastEvaluator eval{TempPath};
+        for (std::size_t i = 0; i < 100; ++i) {
+            const auto x1 = GenerateElement();
+            const auto x2 = GenerateElement();
+            const std::array<Element, 2> xs{{x1, x2}};
+            REQUIRE(eval.Evaluate(xs) == Evaluate(x1, x2));
+        }
+    }
+
+    std::filesystem::remove_all(TempPath);
 }
