@@ -1,6 +1,7 @@
 add_executable(tests
     ASHE.cpp
     big_int.cpp
+    DEPIR.cpp
     fast_evaluation.cpp
     interpolation.cpp
     modular_arithmetic.cpp

@@ -5,7 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "core/fast_evaluation.h"
 
-TEST_CASE("multidimensional FFT", "[DEPIR]") {
+TEST_CASE("multidimensional FFT", "[.FastEvaluator]") {
     MultivariatePolynomial<Evaluation::piInt> poly{23, 3};
     for (int16_t i = 0; i < 23; ++i) {
         for (int16_t j = 0; j < 23; ++j) {
@@ -57,7 +57,7 @@ TEST_CASE("multidimensional FFT", "[DEPIR]") {
     }
 }
 
-TEST_CASE("Simple evaluator", "[DEPIR]") {
+TEST_CASE("Simple evaluator", "[.FastEvaluator]") {
     using Evaluation::pInt;
 
     MultivariatePolynomial<pInt> poly{2, 2};
@@ -109,7 +109,7 @@ TEST_CASE("Simple evaluator", "[DEPIR]") {
     std::filesystem::remove_all(TempPath);
 }
 
-TEST_CASE("Scalar evaluator", "[DEPIR]") {
+TEST_CASE("Scalar evaluator", "[.FastEvaluator]") {
     const auto r = std::make_shared<BigInt>(100);
 
     using Evaluation::rInt;
@@ -159,7 +159,7 @@ TEST_CASE("Scalar evaluator", "[DEPIR]") {
     std::filesystem::remove_all(TempPath);
 }
 
-TEST_CASE("Univariate evaluator", "[DEPIR]") {
+TEST_CASE("Univariate evaluator", "[.FastEvaluator]") {
     const auto q = std::make_shared<BigInt>(3);
 
     using Element = Evaluation::UnivariateFastEvaluator::Element;
@@ -218,7 +218,7 @@ TEST_CASE("Univariate evaluator", "[DEPIR]") {
     std::filesystem::remove_all(TempPath);
 }
 
-TEST_CASE("Bivariate evaluator", "[DEPIR]") {
+TEST_CASE("Bivariate evaluator", "[.FastEvaluator]") {
     const auto q = std::make_shared<BigInt>(2);
 
     using Element = Evaluation::BivariateFastEvaluator::Element;

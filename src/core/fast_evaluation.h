@@ -11,6 +11,9 @@
 
 namespace Evaluation {
 
+// TODO: Move these tags into the classes, or make them templates or whatever, currently
+// it's a little confusing
+
 struct pIntTag {};
 using pInt = ModularInt<int16_t, pIntTag>;
 // p_i int

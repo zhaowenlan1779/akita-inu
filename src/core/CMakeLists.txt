@@ -3,6 +3,8 @@ add_library(src STATIC
     ASHE.h
     big_int.h
     common.h
+    DEPIR.cpp
+    DEPIR.h
     fast_evaluation.cpp
     fast_evaluation.h
     interpolation.cpp
